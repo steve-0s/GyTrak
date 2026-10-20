@@ -5,14 +5,16 @@ GyTrak is an offline-first gym management system designed to simplify member man
 
 ## Features
 
-- **Member Management** — Manage member profiles and membership information.
+- **Member Management** — Create, view, update, and manage member profiles.
 - **Coach Management** — Maintain coach records and related information.
 - **RFID Keyfob Assignment** — Assign, deactivate, and reassign RFID keyfobs to members.
 - **RFID Attendance Tracking** — Dedicated scanners for time-in and time-out.
+- **Manual Attendance Management** — Allow authorized helpdesk staff to manually create, view, update, and delete attendance records when needed.
 - **Offline Support** — Record attendance locally when the internet is unavailable.
 - **Automatic Synchronization** — Upload pending attendance records when connectivity returns.
 - **Attendance Monitoring** — View and manage attendance records.
-- **Data Integrity** — Handle synchronization retries and prevent duplicate attendance events.
+- **Data Integrity** — Prevent duplicate synchronization and maintain consistent attendance records.
+- **Role-Based Access Control** — Restrict manual attendance changes and other administrative actions to authorized staff.
 
 ## Tech Stack
 
