@@ -45,6 +45,7 @@ import AdministrationPages from "../features/administration/AdministrationPages"
 import ReportsPage from "../features/reports/ReportsPage";
 import QRRegistrationPage from "../features/registrations/QRRegistrationPage";
 import CoachesPage from "../features/coaches/CoachesPage";
+import { ForgotPasswordPage, InitialSetupPage, LoginPage } from "../features/auth/AuthPages";
 import {
   activity,
   adminNavGroups,
@@ -96,7 +97,7 @@ function activePageFromPath(pathname: string) {
 }
 
 function App() {
-  const { role, isAdmin, switchRole } = useAuth();
+  const { role, isAdmin, switchRole, isAuthenticated, account, signOut, changeEmail, changePassword } = useAuth();
   const { theme, setTheme } = useTheme();
   const [active, setActive] = useState(() => activePageFromPath(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(false);
@@ -128,8 +129,6 @@ function App() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-  if (window.location.pathname.startsWith("/register"))
-    return <QRRegistrationPage />;
   const handleRoleSwitch = () => {
     switchRole();
     setActive("Dashboard");
@@ -154,6 +153,13 @@ function App() {
     }
   }, [active, isAdmin]);
   const changeTheme = setTheme;
+
+  if (window.location.pathname.startsWith("/register")) return <QRRegistrationPage />;
+  if (!isAuthenticated) {
+    if (window.location.pathname === "/setup") return <InitialSetupPage />;
+    if (window.location.pathname === "/forgot-password") return <ForgotPasswordPage />;
+    return <LoginPage />;
+  }
 
   return (
     <RoleLayout role={role} theme={theme}>
@@ -254,13 +260,21 @@ function App() {
               </span>
               <span className="hidden sm:block">
                 <span className="block text-xs font-semibold">
-                  Jordan Davis
+                  {account?.name ?? "Account"}
                 </span>
                 <span className="block text-[11px] text-[var(--text-muted)]">
-                  {role} · Switch role
+                  {role} · Development role switch
                 </span>
               </span>
               <ChevronDown size={14} className="text-[var(--text-muted)]" />
+            </button>
+            <button
+              onClick={signOut}
+              aria-label="Sign out"
+              className="rounded-lg p-2 text-[var(--text-muted)] hover:bg-[var(--bg)]"
+              title="Sign out"
+            >
+              <LogOut size={17} />
             </button>
           </div>
         </header>
@@ -308,7 +322,7 @@ function App() {
           ) : active === "Audit Logs" ? (
             <AdministrationPages onAction={showNotice} initialView="audit" theme={theme} onThemeChange={changeTheme} />
           ) : active === "Settings" ? (
-            <AdministrationPages onAction={showNotice} initialView="settings" theme={theme} onThemeChange={changeTheme} />
+            <AdministrationPages onAction={showNotice} initialView="settings" theme={theme} onThemeChange={changeTheme} account={account} onChangeEmail={changeEmail} onChangePassword={changePassword} />
           ) : active === "Reports" || active === "Branch Reports" ? (
             <ReportsPage isAdmin={isAdmin} onAction={showNotice} />
           ) : active !== "Dashboard" ? (

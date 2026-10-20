@@ -10,6 +10,7 @@ import { formatPHP as php } from "../../lib/utils";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
 import { auditLogs as initialAuditRows, branches as initialBranches, frontDeskAccounts as initialAccounts } from "../../data/mockData";
+import type { AuthAccount } from "../../contexts/AuthContext";
 
 type Branch = {
   name: string;
@@ -43,6 +44,9 @@ type Props = {
   initialView?: "branches" | "accounts" | "audit" | "settings";
   theme: "light" | "dark";
   onThemeChange: (theme: "light" | "dark") => void;
+  account?: AuthAccount | null;
+  onChangeEmail?: (email: string, confirmation: string, password: string) => Promise<string | null>;
+  onChangePassword?: (current: string, next: string, confirmation: string) => Promise<string | null>;
 };
 
 const badge = (value: string) =>
@@ -55,6 +59,9 @@ export default function AdministrationPages({
   initialView = "branches",
   theme,
   onThemeChange,
+  account,
+  onChangeEmail,
+  onChangePassword,
 }: Props) {
   const [view, setView] = useState(initialView);
   const [branches, setBranches] = useState<Branch[]>(() => initialBranches.map((branch) => ({ ...branch })));
@@ -220,7 +227,7 @@ export default function AdministrationPages({
         />
       )}
       {view === "audit" && <AuditList query={query} setQuery={setQuery} />}
-      {view === "settings" && <SettingsPage onAction={onAction} theme={theme} onThemeChange={onThemeChange} />}
+      {view === "settings" && <SettingsPage onAction={onAction} theme={theme} onThemeChange={onThemeChange} account={account} onChangeEmail={onChangeEmail} onChangePassword={onChangePassword} />}
     </div>
   );
 }
@@ -735,11 +742,31 @@ function AuditList({
   );
 }
 
-function SettingsPage({ onAction, theme, onThemeChange }: { onAction: (message: string) => void; theme: "light" | "dark"; onThemeChange: (theme: "light" | "dark") => void }) {
+function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: { onAction: (message: string) => void; theme: "light" | "dark"; onThemeChange: (theme: "light" | "dark") => void; account?: AuthAccount | null; onChangeEmail?: (email: string, confirmation: string, password: string) => Promise<string | null>; onChangePassword?: (current: string, next: string, confirmation: string) => Promise<string | null> }) {
   const [name, setName] = useState("GyTrak Fitness");
   const [currency, setCurrency] = useState("PHP (₱)");
   const [requireReason, setRequireReason] = useState(true);
   const [notifications, setNotifications] = useState(true);
+  const [newEmail, setNewEmail] = useState(account?.email ?? "");
+  const [emailConfirmation, setEmailConfirmation] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [securityMessage, setSecurityMessage] = useState("");
+  const [securityError, setSecurityError] = useState("");
+  const saveEmail = async () => {
+    if (!onChangeEmail) return;
+    setSecurityError("");
+    const error = await onChangeEmail(newEmail, emailConfirmation, emailPassword);
+    if (error) setSecurityError(error); else { setSecurityMessage("Email updated. Verification is required before it is treated as verified."); setEmailPassword(""); }
+  };
+  const savePassword = async () => {
+    if (!onChangePassword) return;
+    setSecurityError("");
+    const error = await onChangePassword(currentPassword, newPassword, passwordConfirmation);
+    if (error) setSecurityError(error); else { setSecurityMessage("Password updated in the mock account store."); setCurrentPassword(""); setNewPassword(""); setPasswordConfirmation(""); }
+  };
   return (
     <div className="max-w-3xl space-y-5">
       <InfoPanel title="Appearance">
@@ -792,6 +819,25 @@ function SettingsPage({ onAction, theme, onThemeChange }: { onAction: (message: 
           setChecked={setNotifications}
         />
       </InfoPanel>
+      <InfoPanel title="Account email">
+        <p className="mb-4 text-xs text-[var(--text-muted)]">Current account: {account?.email ?? "—"}. Email changes require your current password and would require verification in production.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="New email" value={newEmail} onChange={setNewEmail} placeholder="new-email@example.com" />
+          <Field label="Confirm new email" value={emailConfirmation} onChange={setEmailConfirmation} placeholder="Repeat new email" />
+          <PasswordField label="Current password" value={emailPassword} onChange={setEmailPassword} />
+        </div>
+        <button onClick={() => void saveEmail()} className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold">Update email</button>
+      </InfoPanel>
+      <InfoPanel title="Account password">
+        <p className="mb-4 text-xs text-[var(--text-muted)]">Use at least 8 characters. Passwords are hashed in this mock authentication layer and are never displayed.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PasswordField label="Current password" value={currentPassword} onChange={setCurrentPassword} />
+          <PasswordField label="New password" value={newPassword} onChange={setNewPassword} />
+          <PasswordField label="Confirm new password" value={passwordConfirmation} onChange={setPasswordConfirmation} />
+        </div>
+        <button onClick={() => void savePassword()} className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold">Update password</button>
+      </InfoPanel>
+      {(securityError || securityMessage) && <p className={`rounded-lg px-3 py-2 text-xs ${securityError ? "bg-red-50 text-red-700" : "bg-[var(--accent-subtle)] text-[var(--accent)]"}`}>{securityError || securityMessage}</p>}
       <button
         onClick={() => onAction("Settings saved")}
         className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"
@@ -800,6 +846,11 @@ function SettingsPage({ onAction, theme, onThemeChange }: { onAction: (message: 
       </button>
     </div>
   );
+}
+
+function PasswordField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const [visible, setVisible] = useState(false);
+  return <label className="block"><span className="mb-1.5 block text-xs font-medium">{label}</span><div className="relative"><input type={visible ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 pr-16 text-sm" /><button type="button" onClick={() => setVisible(!visible)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--accent)]">{visible ? "Hide" : "Show"}</button></div></label>;
 }
 
 function Toggle({
