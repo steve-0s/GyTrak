@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { branchAnalytics, branches as branchRecords, membershipStatus } from "../../data/mockData";
+import { branchAnalytics, branches as branchRecords, membershipDueNotifications, membershipStatus } from "../../data/mockData";
 import PeakActivityCard from "../../components/shared/PeakActivityCard";
 
 type Props = { onAction: (message: string) => void };
@@ -77,6 +77,10 @@ export default function AdminDashboardPage({ onAction }: Props) {
       ),
     [visibleBranches],
   );
+  const dueMemberships = membershipDueNotifications.filter(
+    (item) => branch === "All Branches" || item.branch === branch,
+  );
+  const expiringSoon = dueMemberships.filter((item) => item.key === "soon" || item.key === "today").length;
   const cards = [
     [
       "Total customers",
@@ -110,7 +114,7 @@ export default function AdminDashboardPage({ onAction }: Props) {
     ],
     [
       "Expiring soon",
-      formatNumber(Math.round(totals.expiring)),
+      formatNumber(expiringSoon),
       "Within the next 30 days",
       false,
     ],
@@ -419,7 +423,7 @@ export default function AdminDashboardPage({ onAction }: Props) {
               onClick={() => onAction("Expiring memberships opened")}
               className="mt-2 flex w-full items-center justify-between text-left text-xs text-[var(--text-muted)] hover:text-[var(--accent)]"
             >
-              18 memberships expire within 30 days <ArrowUpRight size={14} />
+              {expiringSoon} memberships need payment follow-up <ArrowUpRight size={14} />
             </button>
           </div>
         </ChartCard>

@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { branchAnalytics, dashboardAttendance, dashboardWalkIns, membershipAttention, memberships } from "../../data/mockData";
+import { branchAnalytics, dashboardAttendance, dashboardWalkIns, membershipDueNotifications, memberships } from "../../data/mockData";
 import PeakActivityCard from "../../components/shared/PeakActivityCard";
 
 type Props = { onAction: (message: string) => void };
@@ -44,12 +44,13 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
     .reduce((total, visit) => total + visit.fee, 0);
   const todayWalkIns = walkIns.filter((visit) => visit.date === "Oct 20, 2026");
   const uniqueVisitors = new Set(attendanceRecords.map((record) => record.customer)).size;
+  const dueMemberships = membershipDueNotifications.filter((item) => item.branch === "Makati Central");
   const stats = [
     ["Check-ins today", String(attendanceRecords.length), "Confirmed events"],
     ["Unique visitors", String(uniqueVisitors), "Distinct customers"],
     ["Active members", String(memberships.filter((membership) => membership.status === "Active").length), "Assigned branch records"],
     ["Walk-ins today", String(todayWalkIns.length), `${php(paidRevenue)} collected`],
-    ["Expiring soon", String(membershipAttention.filter((item) => item.action === "Renew").length), "Needs membership attention"],
+    ["Payment follow-up", String(dueMemberships.length), "Manual reminders only"],
     ["Pending actions", String(attendanceRecords.filter((record) => record.status === "Checked in").length), "Open operational records"],
   ];
 
@@ -375,7 +376,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
             </p>
           </div>
           <div className="divide-y divide-[var(--border)]">
-            {membershipAttention.map((item) => (
+            {dueMemberships.map((item) => (
               <div
                 key={item.customer}
                 className="flex items-center justify-between gap-3 px-5 py-3.5"
@@ -383,14 +384,14 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
                 <div>
                   <p className="text-xs font-semibold">{item.customer}</p>
                   <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                    {item.plan} · {item.issue}
+                    Due {item.dueDate} · {item.label}
                   </p>
                 </div>
                 <button
-                  onClick={() => onAction(`${item.action} workflow opened`)}
+                  onClick={() => onAction(`${item.customer} payment follow-up opened`)}
                   className="shrink-0 text-xs font-semibold text-[var(--accent)]"
                 >
-                  {item.action}
+                  Follow up
                 </button>
               </div>
             ))}

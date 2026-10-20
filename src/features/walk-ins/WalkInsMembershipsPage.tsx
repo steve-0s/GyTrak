@@ -8,6 +8,7 @@ import {
   Search,
 } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
+import { addBillingMonths, durationToMonths, membershipDueState } from "../../lib/membership";
 import Modal from "../../components/shared/Modal";
 import { customers, membershipPlans, memberships as initialMemberships, walkIns as initialWalkIns } from "../../data/mockData";
 import { nextMockId } from "../../services/mockApi";
@@ -36,7 +37,9 @@ type Membership = {
   payment: "Paid" | "Pending";
   branch: string;
   price: number;
+  payments?: PaymentRecord[];
 };
+type PaymentRecord = { id: string; date: string; amount: number; method: string; reference: string };
 type Plan = {
   name: string;
   duration: string;
@@ -460,7 +463,7 @@ function MembershipList({
           ],
           [
             "Expiring soon",
-            allRows.filter((row) => row.end.includes("Nov 2026") || row.end.includes("Dec 2026")).length,
+            allRows.filter((row) => ["soon", "today"].includes(membershipDueState(row.end).key)).length,
           ],
         ].map(([label, value]) => (
           <div
@@ -496,7 +499,7 @@ function MembershipList({
                 "Start date",
                 "End date",
                 "Status",
-                "Payment",
+                "Payment / due",
                 "Branch",
                 "",
               ].map((label) => (
@@ -526,6 +529,7 @@ function MembershipList({
                   >
                     {row.status}
                   </span>
+                  {membershipDueState(row.end).key !== "upcoming" && <p className={`mt-1 text-[10px] ${membershipDueState(row.end).key === "overdue" ? "text-red-600" : "text-amber-600"}`}>{membershipDueState(row.end).label}</p>}
                 </td>
                 <td className="px-5 py-4">
                   <span
@@ -906,12 +910,7 @@ function MembershipForm({
             customerId: matchedCustomer.id,
             plan: selected.name,
             start: "Oct 20, 2026",
-            end:
-              selected.duration === "1 month"
-                ? "Nov 20, 2026"
-                : selected.duration === "3 months"
-                  ? "Jan 20, 2027"
-                  : "Oct 20, 2027",
+            end: addBillingMonths("Oct 20, 2026", durationToMonths(selected.duration)),
             status: payment === "Paid" ? "Active" : "Pending",
             payment,
             branch,
@@ -937,6 +936,30 @@ function MembershipDetails({
   onUpdate: (membership: Membership) => void;
   onAction: (message: string) => void;
 }) {
+  const [recording, setRecording] = useState(false);
+  const [amount, setAmount] = useState(String(membership.price));
+  const [method, setMethod] = useState("Cash");
+  const [reference, setReference] = useState("");
+  const dueState = membershipDueState(membership.end);
+  const recordPayment = () => {
+    const payment: PaymentRecord = {
+      id: nextMockId("PAY", 10),
+      date: "Oct 20, 2026",
+      amount: Number(amount) || 0,
+      method,
+      reference: reference.trim() || "—",
+    };
+    if (!payment.amount) return;
+    onUpdate({
+      ...membership,
+      payment: "Paid",
+      status: membership.status === "Expired" ? "Active" : membership.status,
+      end: addBillingMonths(membership.end, durationToMonths(membership.plan)),
+      payments: [...(membership.payments ?? []), payment],
+    });
+    setRecording(false);
+    onAction("Manual membership payment recorded");
+  };
   return (
     <FormShell
       title={membership.id}
@@ -953,10 +976,19 @@ function MembershipDetails({
         <Info label="End date" value={membership.end} />
         <Info label="Status" value={membership.status} />
         <Info
-          label="Payment"
+          label="Payment status"
           value={`${membership.payment} · ${php(membership.price)}`}
         />
+        <Info label="Next due date" value={`${membership.end} · ${dueState.label}`} />
       </div>
+      <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-semibold">Manual payment recording</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Record payment only after staff confirms the member has paid. GyTrak never charges automatically.</p></div>
+          <button onClick={() => setRecording(!recording)} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--on-accent)]">Record payment</button>
+        </div>
+        {recording && <div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" placeholder="Amount" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><select value={method} onChange={(event) => setMethod(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Reference (optional)" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><button onClick={recordPayment} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)] sm:col-span-3">Confirm payment received</button></div>}
+      </div>
+      <div className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Payment history</h3>{membership.payments?.length ? <div className="mt-3 space-y-2 text-xs">{membership.payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
       <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--border)] pt-5">
         {membership.status === "Active" && (
           <button

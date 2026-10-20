@@ -1,4 +1,5 @@
 export type { Role } from "../types"
+import { membershipDueState } from "../lib/membership"
 
 export const branches = [
   { name: "Makati Central", location: "Makati City, Metro Manila", status: "Active", customers: 684, memberships: 512, visits: 348, revenue: 84240, frontDesk: 4 },
@@ -12,7 +13,7 @@ export const customers = [
   { id: "CUS-10477", name: "Ava Rivera", phone: "+63 917 555 0188", email: "ava.rivera@email.com", type: "Member", status: "Active", branch: "BGC High Street", registered: "Jan 09, 2026", lastVisit: "Today, 09:18 AM", plan: "Quarterly Membership", endDate: "Dec 18, 2026", keyfob: "RF-00796" },
   { id: "CUS-10462", name: "Luis Moreno", phone: "+63 917 555 0114", email: "luis.moreno@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 20, 2026", lastVisit: "Today, 09:31 AM" },
   { id: "CUS-10441", name: "Noah Patel", phone: "+63 917 555 0139", email: "noah.patel@email.com", type: "Member", status: "Expired", branch: "Cebu IT Park", registered: "Jun 02, 2025", lastVisit: "Today, 08:56 AM", plan: "Monthly Membership", endDate: "Oct 12, 2026" },
-  { id: "CUS-10424", name: "Sofia Kim", phone: "+63 917 555 0193", email: "sofia.kim@email.com", type: "Member", status: "Pending", branch: "BGC High Street", registered: "Oct 19, 2026", lastVisit: "Today, 08:44 AM", plan: "Monthly Membership", endDate: "Nov 19, 2026" },
+  { id: "CUS-10424", name: "Sofia Kim", phone: "+63 917 555 0193", email: "sofia.kim@email.com", type: "Member", status: "Pending", branch: "BGC High Street", registered: "Oct 19, 2026", lastVisit: "Today, 08:44 AM", plan: "Monthly Membership", endDate: "Oct 26, 2026" },
   { id: "CUS-10398", name: "Rina Velasco", phone: "+63 917 555 0160", email: "rina.velasco@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 18, 2026", lastVisit: "Yesterday, 06:20 PM" },
 ] as const
 
@@ -46,9 +47,25 @@ export const visitRecords = [
 export const memberships = [
   { id: "MEM-00814", customer: "Maya Santos", customerId: "CUS-10482", plan: "Annual Membership", start: "Jan 12, 2026", end: "Jan 12, 2027", status: "Active", payment: "Paid", branch: "Makati Central", price: 12000 },
   { id: "MEM-00809", customer: "Ava Rivera", customerId: "CUS-10477", plan: "Quarterly Membership", start: "Sep 18, 2026", end: "Dec 18, 2026", status: "Active", payment: "Paid", branch: "BGC High Street", price: 4200 },
-  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Oct 19, 2026", end: "Nov 19, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: 1800 },
-  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Paid", branch: "Cebu IT Park", price: 1800 },
+  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Sep 26, 2026", end: "Oct 26, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: 1800 },
+  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Pending", branch: "Cebu IT Park", price: 1800 },
 ] as const
+
+export const membershipPayments = [
+  { id: "PAY-001", membershipId: "MEM-00814", date: "Jan 12, 2026", amount: 12000, method: "GCash", reference: "GC-120126" },
+  { id: "PAY-002", membershipId: "MEM-00809", date: "Sep 18, 2026", amount: 4200, method: "Cash", reference: "Receipt-8841" },
+  { id: "PAY-003", membershipId: "MEM-00794", date: "Sep 12, 2026", amount: 1800, method: "Card", reference: "POS-7712" },
+] as const
+
+export const membershipDueNotifications = memberships
+  .map((membership) => ({
+    membershipId: membership.id,
+    customer: membership.customer,
+    branch: membership.branch,
+    dueDate: membership.end,
+    ...membershipDueState(membership.end),
+  }))
+  .filter((notification) => notification.key !== "upcoming")
 
 export const membershipPlans = [
   { name: "Monthly Membership", duration: "1 month", price: 1800, active: true, used: 84 },
