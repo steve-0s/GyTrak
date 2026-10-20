@@ -25,7 +25,7 @@ GyTrak is an offline-first, multi-branch gym management system designed to simpl
 
 - **RFID Keyfob Assignment** — Assign, deactivate, and reassign RFID keyfobs while maintaining assignment history.
 - **RFID Attendance Tracking** — Use dedicated scanners for time-in and time-out.
-- **Manual Attendance Management** — Allow authorized helpdesk staff to create, view, update, and delete attendance records when necessary.
+- **Manual Attendance Management** — Allow authorized front desk staff to create, view, update, and delete attendance records when necessary.
 - **Walk-in Check-in** — Support manual check-in and check-out for walk-in visitors, with optional temporary RFID passes.
 - **Attendance Monitoring** — View attendance records, customer visit history, and branch activity.
 - **Audit Trail** — Track manual attendance changes, including the staff member responsible, timestamp, and reason for the change.
@@ -34,7 +34,7 @@ GyTrak is an offline-first, multi-branch gym management system designed to simpl
 
 - **Branch Management** — Create, update, and deactivate gym branches.
 - **Branch-Specific Operations** — Manage customers, coaches, visits, attendance, and keyfob assignments by branch.
-- **Helpdesk Assignment** — Assign helpdesk accounts to specific branches and restrict their access accordingly.
+- **Front Desk Assignment** — Assign front desk accounts to specific branches and restrict their access accordingly.
 - **Centralized Customer Profiles** — Support shared customer profiles across branches while keeping visits associated with the branch where they occurred.
 
 ### Offline Support and Synchronization
@@ -64,8 +64,8 @@ GyTrak uses role-based access control (RBAC) to manage permissions across multip
 The Admin has system-wide access and oversees all branches.
 
 - Create, update, and deactivate branches.
-- Create and manage helpdesk accounts.
-- Assign helpdesk staff to specific branches.
+- Create and manage front desk accounts.
+- Assign front desk staff to specific branches.
 - View business-wide dashboards, statistics, and analytics.
 - Access customer, membership, attendance, and visit records across branches.
 - Compare branch performance and activity.
@@ -73,9 +73,9 @@ The Admin has system-wide access and oversees all branches.
 - Access reports and audit logs across all branches.
 - Manage system-wide settings and permissions.
 
-### Helpdesk — Branch Staff
+### Front Desk — Branch Staff
 
-Helpdesk accounts manage day-to-day operations within their assigned branches.
+Front Desk accounts manage day-to-day operations within their assigned branches.
 
 - View branch-specific dashboards and attendance statistics.
 - Manage customer profiles, membership information, and coach records.
@@ -91,7 +91,7 @@ Helpdesk accounts manage day-to-day operations within their assigned branches.
 ### Security and Permissions
 
 - Enforce permissions on the backend, not only in the user interface.
-- Restrict helpdesk access to assigned branches.
+- Restrict front desk access to assigned branches.
 - Validate access to customer, membership, payment, and attendance records.
 - Record important administrative actions in audit logs.
 - Protect customer information and prevent unauthorized profile access.
@@ -120,7 +120,7 @@ GyTrak is designed to continue recording attendance even when the internet is un
 4. A new customer profile is created, or the existing profile is retrieved after identity verification.
 5. The visit is recorded separately from registration and confirmed when the visitor actually checks in at the gym.
 6. Returning walk-in visitors can use their existing profiles for subsequent visits.
-7. If a walk-in purchases a membership, helpdesk staff update the customer's membership information and assign an RFID keyfob without creating another profile.
+7. If a walk-in purchases a membership, front desk staff update the customer's membership information and assign an RFID keyfob without creating another profile.
 
 ## Tech Stack
 

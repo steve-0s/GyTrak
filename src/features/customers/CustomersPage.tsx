@@ -1,0 +1,751 @@
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Check,
+  Edit3,
+  Plus,
+  Search,
+  UserRound,
+} from "lucide-react";
+import { createMockId } from "../../services/mockApi";
+import FilterSelect from "../../components/shared/FilterSelect";
+import Modal from "../../components/shared/Modal";
+import { customers as initialCustomers } from "../../data/mockData";
+import { visitRecords } from "../../data/mockData";
+
+type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  type: "Member" | "Walk-in";
+  status: "Active" | "Pending" | "Expired" | "None";
+  branch: string;
+  registered: string;
+  lastVisit: string;
+  plan?: string;
+  endDate?: string;
+  keyfob?: string;
+};
+type Props = { isAdmin: boolean; onAction: (message: string) => void };
+
+const statusClasses: Record<Customer["status"], string> = {
+  Active: "bg-[var(--accent-subtle)] text-[var(--accent)]",
+  Pending: "bg-amber-50 text-amber-700",
+  Expired: "bg-red-50 text-red-700",
+  None: "bg-[var(--bg)] text-[var(--text-muted)]",
+};
+
+export default function CustomersPage({ isAdmin, onAction }: Props) {
+  const [customers, setCustomers] = useState<Customer[]>(() =>
+    initialCustomers.map((customer) => ({ ...customer })),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [query, setQuery] = useState("");
+  const [branch, setBranch] = useState(
+    isAdmin ? "All branches" : "Makati Central",
+  );
+  const [type, setType] = useState("All types");
+  const [status, setStatus] = useState("All statuses");
+  const [page, setPage] = useState(1);
+  const visible = useMemo(
+    () =>
+      customers.filter(
+        (customer) =>
+          (branch === "All branches" || customer.branch === branch) &&
+          (type === "All types" || customer.type === type) &&
+          (status === "All statuses" || customer.status === status) &&
+          `${customer.name} ${customer.id} ${customer.phone}`
+            .toLowerCase()
+            .includes(query.toLowerCase()),
+      ),
+    [customers, branch, type, status, query],
+  );
+  const selected = customers.find((customer) => customer.id === selectedId);
+
+  if (editing)
+    return (
+      <Modal label={editing.id ? "Edit customer" : "Add customer"} onClose={() => setEditing(null)} wide>
+        <CustomerForm
+        customer={editing.id ? editing : undefined}
+        customers={customers}
+        branch={branch === "All branches" ? "Makati Central" : branch}
+        onCancel={() => setEditing(null)}
+        onSave={(customer) => {
+          setCustomers((current) =>
+            editing.id
+              ? current.map((item) =>
+                  item.id === customer.id ? customer : item,
+                )
+              : [customer, ...current],
+          );
+          setEditing(null);
+          setSelectedId(customer.id);
+          onAction(editing.id ? "Customer updated" : "Customer created");
+        }}
+        />
+      </Modal>
+    );
+  if (selected)
+    return (
+      <CustomerDetails
+        customer={selected}
+        onBack={() => setSelectedId(null)}
+        onEdit={() => setEditing(selected)}
+        onChangeType={() => {
+          const updated =
+            selected.type === "Member"
+              ? { ...selected, type: "Walk-in" as const, status: "None" as const, plan: undefined, endDate: undefined }
+              : {
+                  ...selected,
+                  type: "Member" as const,
+                  status: "Active" as const,
+                  plan: "Monthly Membership",
+                  endDate: "Nov 20, 2026",
+                };
+          setCustomers((current) =>
+            current.map((item) => (item.id === selected.id ? updated : item)),
+          );
+          setSelectedId(updated.id);
+          onAction(
+            updated.type === "Member"
+              ? "Customer converted to member"
+              : "Customer changed to walk-in",
+          );
+        }}
+        onConvert={() => {
+          const updated = {
+            ...selected,
+            type: "Member" as const,
+            status: "Active" as const,
+            plan: "Monthly Membership",
+            endDate: "Nov 20, 2026",
+          };
+          setCustomers((current) =>
+            current.map((item) => (item.id === selected.id ? updated : item)),
+          );
+          onAction("Walk-in converted using the existing profile");
+        }}
+        onAction={onAction}
+      />
+    );
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="mb-1 text-sm font-medium text-[var(--accent)]">
+            {isAdmin ? "All branches" : "Makati Central"}
+          </p>
+          <h2 className="text-2xl font-bold tracking-tight">Customers</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            Search and manage customer profiles without duplicating records.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onAction("Customer export prepared")}
+            className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block"
+          >
+            Export
+          </button>
+          <button
+            onClick={() =>
+              setEditing({
+                id: "",
+                name: "",
+                phone: "",
+                email: "",
+                type: "Walk-in",
+                status: "None",
+                branch: branch === "All branches" ? "Makati Central" : branch,
+                registered: "Today",
+                lastVisit: "—",
+              })
+            }
+            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+          >
+            <Plus size={16} /> Add customer
+          </button>
+        </div>
+      </div>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["Total customers", customers.length],
+          [
+            "Active members",
+            customers.filter((c) => c.status === "Active").length,
+          ],
+          [
+            "Walk-in customers",
+            customers.filter((c) => c.type === "Walk-in").length,
+          ],
+          [
+            "New this period",
+            customers.filter((c) => c.registered.includes("Oct")).length,
+          ],
+        ].map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+          >
+            <p className="text-xs text-[var(--text-muted)]">{label}</p>
+            <p className="mt-1 text-xl font-bold">{value}</p>
+          </div>
+        ))}
+      </div>
+      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 sm:p-5">
+          <div className="flex flex-wrap gap-2">
+            <label className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 sm:max-w-xs">
+              <Search size={16} className="text-[var(--text-muted)]" />
+              <input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search name, ID, or phone"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]"
+              />
+            </label>
+            {isAdmin && (
+              <Filter
+                value={branch}
+                onChange={setBranch}
+                options={[
+                  "All branches",
+                  "Makati Central",
+                  "BGC High Street",
+                  "Cebu IT Park",
+                ]}
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Filter
+              value={type}
+              onChange={setType}
+              options={["All types", "Member", "Walk-in"]}
+            />
+            <Filter
+              value={status}
+              onChange={setStatus}
+              options={["All statuses", "Active", "Pending", "Expired", "None"]}
+            />
+            <button
+              onClick={() => {
+                setQuery("");
+                setBranch(isAdmin ? "All branches" : "Makati Central");
+                setType("All types");
+                setStatus("All statuses");
+              }}
+              className="px-2 text-xs font-semibold text-[var(--accent)]"
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-xs">
+            <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
+              <tr>
+                {[
+                  "Customer ID",
+                  "Customer name",
+                  "Contact information",
+                  "Type",
+                  "Membership",
+                  "Branch",
+                  "Last visit",
+                  "",
+                ].map((label) => (
+                  <th key={label} className="px-5 py-3 font-semibold">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {visible.slice((page - 1) * 5, page * 5).map((customer) => (
+                <tr key={customer.id} className="hover:bg-[var(--bg)]">
+                  <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
+                    {customer.id}
+                  </td>
+                  <td className="px-5 py-4">
+                    <button
+                      onClick={() => setSelectedId(customer.id)}
+                      className="font-semibold hover:text-[var(--accent)]"
+                    >
+                      {customer.name}
+                    </button>
+                  </td>
+                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                    <span className="block">{customer.phone}</span>
+                    <span className="mt-0.5 block text-[11px]">
+                      {customer.email}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4">{customer.type}</td>
+                  <td className="px-5 py-4">
+                    <span
+                      className={`rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[customer.status]}`}
+                    >
+                      {customer.status}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                    {customer.branch}
+                  </td>
+                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                    {customer.lastVisit}
+                  </td>
+                  <td className="px-5 py-4 text-right">
+                    <button
+                      onClick={() => setSelectedId(customer.id)}
+                      className="font-semibold text-[var(--accent)]"
+                    >
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visible.length === 0 && (
+            <div className="p-12 text-center text-sm text-[var(--text-muted)]">
+              No customers match the current filters.
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-muted)]">
+          <span>
+            {visible.length} result{visible.length === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span>Page {page}</span>
+            <button
+              disabled={page * 5 >= visible.length}
+              onClick={() => setPage(page + 1)}
+              className="rounded border border-[var(--border)] px-2 py-1 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Filter({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}) {
+  return <FilterSelect value={value} options={options} onChange={onChange} />;
+}
+
+function CustomerDetails({
+  customer,
+  onBack,
+  onEdit,
+  onConvert,
+  onChangeType,
+  onAction,
+}: {
+  customer: Customer;
+  onBack: () => void;
+  onEdit: () => void;
+  onConvert: () => void;
+  onChangeType: () => void;
+  onAction: (message: string) => void;
+}) {
+  const [visitDate, setVisitDate] = useState("");
+  const [visitTime, setVisitTime] = useState("");
+  const visits = visitRecords.filter(
+    (event) =>
+      event.customer === customer.name &&
+      (!visitDate || event.date.toLowerCase().includes(visitDate.toLowerCase())) &&
+      (!visitTime || `${event.timeIn} ${event.timeOut}`.toLowerCase().includes(visitTime.toLowerCase())),
+  );
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
+      >
+        <ArrowLeft size={16} /> Back to customers
+      </button>
+      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="mb-1 font-mono text-xs text-[var(--text-muted)]">
+            {customer.id}
+          </p>
+          <h2 className="text-2xl font-bold tracking-tight">{customer.name}</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            Registered {customer.registered} · {customer.branch}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
+          >
+            <Edit3 size={15} /> Edit profile
+          </button>
+          <button
+            onClick={customer.type === "Walk-in" ? onConvert : onChangeType}
+            className="rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+          >
+            {customer.type === "Walk-in"
+              ? "Convert to member"
+              : "Change to walk-in"}
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[.85fr_1.15fr]">
+        <div className="space-y-5">
+          <InfoSection title="Profile">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-subtle)] text-[var(--accent)]">
+                <UserRound size={19} />
+              </div>
+              <div>
+                <p className="font-semibold">{customer.name}</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {customer.phone}
+                </p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {customer.email}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
+              <Detail label="Customer type" value={customer.type} />
+              <Detail label="Branch activity" value={customer.branch} />
+            </div>
+          </InfoSection>
+          <InfoSection title="Membership">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">
+                  {customer.plan ?? "No active membership"}
+                </p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {customer.endDate
+                    ? `Ends ${customer.endDate}`
+                    : "Walk-in profile"}
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[customer.status]}`}
+              >
+                {customer.status}
+              </span>
+            </div>
+            {customer.plan && (
+              <button
+                onClick={() => onAction("Membership details opened")}
+                className="mt-4 flex items-center gap-1 text-xs font-semibold text-[var(--accent)]"
+              >
+                View membership details <ArrowUpRight size={13} />
+              </button>
+            )}
+          </InfoSection>
+          <InfoSection title="RFID Keyfob">
+            <Detail
+              label="Assigned keyfob"
+              value={customer.keyfob ?? "Not assigned"}
+            />
+            <button
+              onClick={() => onAction("Keyfob assignment opened")}
+              className="mt-3 text-xs font-semibold text-[var(--accent)]"
+            >
+              {customer.keyfob ? "View assignment history" : "Assign keyfob"}
+            </button>
+          </InfoSection>
+        </div>
+        <div className="space-y-5">
+          <InfoSection title="Activity history">
+            <div className="space-y-3 text-xs">
+              <p>
+                <span className="font-medium">Profile created</span>
+                <span className="ml-2 text-[var(--text-muted)]">
+                  {customer.registered}
+                </span>
+              </p>
+              <p>
+                <span className="font-medium">Latest visit recorded</span>
+                <span className="ml-2 text-[var(--text-muted)]">Today</span>
+              </p>
+              {customer.type === "Member" && (
+                <p>
+                  <span className="font-medium">Membership record linked</span>
+                  <span className="ml-2 text-[var(--text-muted)]">System</span>
+                </p>
+              )}
+            </div>
+          </InfoSection>
+        </div>
+      </div>
+      <div className="mt-5">
+        <InfoSection title="Visit history">
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--bg)] p-3">
+            <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
+              <span className="text-[var(--text-muted)]">Day</span>
+              <input
+                value={visitDate}
+                onChange={(event) => setVisitDate(event.target.value)}
+                placeholder="e.g. Oct 20, 2026"
+                className="w-32 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
+              />
+            </label>
+            <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
+              <span className="text-[var(--text-muted)]">Time</span>
+              <input
+                value={visitTime}
+                onChange={(event) => setVisitTime(event.target.value)}
+                placeholder="e.g. 09:42 AM"
+                className="w-28 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
+              />
+            </label>
+            <span className="text-xs text-[var(--text-muted)]">
+              {visits.length > 0
+                ? `${visits.length} attendance record${visits.length === 1 ? "" : "s"} found`
+                : "No attendance records found"}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] text-left text-xs">
+              <thead className="text-[var(--text-muted)]">
+                <tr>
+                  <th className="pb-3 font-medium">Date</th>
+                  <th className="pb-3 font-medium">Branch</th>
+                  <th className="pb-3 font-medium">Time-in</th>
+                  <th className="pb-3 font-medium">Time-out</th>
+                  <th className="pb-3 font-medium">Source</th>
+                  <th className="pb-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {visits.map((visit) => (
+                  <tr key={visit.id}>
+                    <td className="py-3">{visit.date}</td>
+                    <td className="py-3 text-[var(--text-muted)]">{visit.branch}</td>
+                    <td className="py-3 text-[var(--text-muted)]">{visit.timeIn}</td>
+                    <td className="py-3 text-[var(--text-muted)]">{visit.timeOut}</td>
+                    <td className="py-3">{visit.source}</td>
+                    <td className="py-3">{visit.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </InfoSection>
+      </div>
+    </div>
+  );
+}
+
+function InfoSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+      <h3 className="mb-4 font-semibold">{title}</h3>
+      {children}
+    </section>
+  );
+}
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
+      <p className="mt-1 text-xs font-medium">{value}</p>
+    </div>
+  );
+}
+
+function CustomerForm({
+  customer,
+  customers,
+  branch,
+  onCancel,
+  onSave,
+}: {
+  customer?: Customer;
+  customers: Customer[];
+  branch: string;
+  onCancel: () => void;
+  onSave: (customer: Customer) => void;
+}) {
+  const [form, setForm] = useState<Customer>(
+    customer ?? {
+      id: "",
+      name: "",
+      phone: "",
+      email: "",
+      type: "Walk-in",
+      status: "None",
+      branch,
+      registered: "Today",
+      lastVisit: "—",
+    },
+  );
+  const [error, setError] = useState("");
+  const update = (key: keyof Customer, value: string) =>
+    setForm((current) => ({ ...current, [key]: value }));
+  const submit = () => {
+    if (!form.name.trim() || !form.phone.trim())
+      return setError("Full name and phone number are required.");
+    const duplicate = customers.find(
+      (item) => item.phone === form.phone && item.id !== form.id,
+    );
+    if (duplicate)
+      return setError(
+        `Possible duplicate detected: this phone number is already used by ${duplicate.name}. Review the existing profile before continuing.`,
+      );
+    onSave({
+      ...form,
+      id: form.id || createMockId("CUS", 10500 + customers.length),
+      registered: form.registered || "Today",
+    });
+  };
+  return (
+    <div className="mx-auto max-w-3xl">
+      <button
+        onClick={onCancel}
+        className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
+      >
+        <ArrowLeft size={16} /> Back to customers
+      </button>
+      <div className="mb-6">
+        <p className="mb-1 text-sm font-medium text-[var(--accent)]">
+          Customer record
+        </p>
+        <h2 className="text-2xl font-bold">
+          {customer?.id ? "Edit customer" : "Add customer"}
+        </h2>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          Required fields are marked by the workflow, not manually assigned
+          system values.
+        </p>
+      </div>
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field
+            label="Full name"
+            required
+            value={form.name}
+            onChange={(value) => update("name", value)}
+            placeholder="e.g. Jamie Lim"
+          />
+          <Field
+            label="Phone number"
+            required
+            value={form.phone}
+            onChange={(value) => update("phone", value)}
+            placeholder="+63 917 000 0000"
+          />
+          <Field
+            label="Email address"
+            value={form.email}
+            onChange={(value) => update("email", value)}
+            placeholder="name@example.com"
+          />
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium">Branch</span>
+            <select
+              value={form.branch}
+              onChange={(event) => update("branch", event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+            >
+              <option>Makati Central</option>
+              <option>BGC High Street</option>
+              <option>Cebu IT Park</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium">
+              Customer type
+            </span>
+            <select
+              value={form.type}
+              onChange={(event) => update("type", event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+            >
+              <option>Walk-in</option>
+              <option>Member</option>
+            </select>
+          </label>
+        </div>
+        {error && (
+          <p className="mt-5 rounded-lg bg-red-50 px-3 py-2.5 text-xs text-red-700">
+            {error}
+          </p>
+        )}
+        <div className="mt-6 flex justify-end gap-2 border-t border-[var(--border)] pt-5">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--on-accent)]"
+          >
+            <Check size={16} /> Save customer
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  required,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+      />
+    </label>
+  );
+}
