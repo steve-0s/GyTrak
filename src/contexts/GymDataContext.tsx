@@ -3,23 +3,24 @@ import { auditLogs as seedAuditLogs, branches as seedBranches, coaches as seedCo
 import { nextMockId, nowLabel } from "../services/mockApi";
 import { normalizePhone } from "../lib/utils";
 import { addBillingMonths, durationToMonths } from "../lib/membership";
-import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, VisitRecord, WalkIn } from "../types";
+import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn } from "../types";
 
 const storageKey = "gytrak-mock-gym-data-v2";
 const branchRecords: BranchRecord[] = seedBranches.map((branch) => ({ ...branch }));
 
-type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[] };
+type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[] };
 type ProfileInput = { branchId: string; name: string; phone: string; email: string };
 type GymDataContextValue = GymData & {
   branches: BranchRecord[];
   submitProfileRegistration: (input: ProfileInput) => { submission: RegistrationSubmission; duplicate: boolean };
   reviewRegistration: (id: string, action: "approve" | "reject" | "correction", reviewer: string, customerId?: string, note?: string) => string | null;
   findCustomersByPhone: (phone: string) => Customer[];
-  checkInWalkIn: (branchId: string, phone: string) => { kind: "checked-in"; customer: Customer; walkIn: WalkIn; visit: VisitRecord } | { kind: "duplicate"; customer: Customer } | { kind: "ambiguous"; customers: Customer[] } | { kind: "not-found" };
+  checkInWalkIn: (branchId: string, phone: string) => { kind: "checked-in"; customer: Customer; walkIn: WalkIn; visit: VisitRecord } | { kind: "duplicate"; customer: Customer } | { kind: "ambiguous"; customers: Customer[] } | { kind: "not-found" } | { kind: "not-configured" };
   recordWalkInPayment: (walkInId: string, method: string) => void;
   upsertCustomer: (customer: Customer) => void;
   updateCustomer: (customer: Customer) => void;
   updateVisit: (id: string, update: Partial<VisitRecord>) => void;
+  recordManualAttendance: (input: { customerId: string; branch: string; type: "Member" | "Walk-in"; date: string; timeIn: string; timeOut: string; note?: string }) => { ok: true; visit: VisitRecord } | { ok: false; error: string };
   updateWalkIn: (id: string, update: Partial<WalkIn>) => void;
   addWalkIn: (walkIn: WalkIn) => void;
   removeWalkIn: (id: string) => void;
@@ -27,6 +28,7 @@ type GymDataContextValue = GymData & {
   updateMembership: (membership: Membership) => void;
   removeMembership: (id: string) => void;
   addMembershipPlan: (plan: MembershipPlan) => void;
+  upsertServicePrice: (price: ServicePrice) => void;
   recordMembershipPayment: (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => void;
   upsertCoach: (coach: Coach) => void;
   removeCoach: (id: string) => void;
@@ -45,6 +47,7 @@ function readData(): GymData {
       ...stored,
       memberships: stored.memberships ?? seedMemberships.map((item) => ({ ...item })),
       membershipPlans: stored.membershipPlans ?? seedPlans.map((item) => ({ ...item })),
+      servicePrices: stored.servicePrices ?? defaultServicePrices(),
       payments: stored.payments ?? seedPayments.map((item) => ({ ...item })),
       coaches: stored.coaches ?? seedCoaches.map((item) => ({ ...item })),
       keyfobs: stored.keyfobs ?? seedKeyfobs.map((item) => ({ ...item })),
@@ -60,6 +63,7 @@ function readData(): GymData {
     visits: seedVisits.map((item) => ({ ...item })),
     memberships: seedMemberships.map((item) => ({ ...item })),
     membershipPlans: seedPlans.map((item) => ({ ...item })),
+    servicePrices: defaultServicePrices(),
     payments: seedPayments.map((item) => ({ ...item })),
     coaches: seedCoaches.map((item) => ({ ...item })),
     keyfobs: seedKeyfobs.map((item) => ({ ...item })),
@@ -71,6 +75,14 @@ function readData(): GymData {
 
 function branchFor(branchId: string, records: BranchRecord[] = branchRecords) {
   return records.find((branch) => branch.id === branchId && branch.status === "Active");
+}
+
+function defaultServicePrices(): ServicePrice[] {
+  return [
+    { id: "SR-WALKIN", name: "Non-member walk-in", category: "Walk-in access", amount: 250, active: true },
+    { id: "SR-MEMBER-WALKIN", name: "Existing member walk-in", category: "Walk-in access", amount: 0, active: true },
+    { id: "SR-COACHING", name: "Personal coaching session", category: "Coaching", amount: 800, active: true },
+  ];
 }
 
 export function GymDataProvider({ children }: { children: ReactNode }) {
@@ -118,7 +130,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
       let customers = data.customers;
       let resultingCustomerId = customer?.id;
       if (!customer) {
-        const created: Customer = { id: nextMockId("CUS", 10500), name: submission.name, phone: submission.phone, email: submission.email, type: "Walk-in", status: "None", branch: submission.branch, registered: nowLabel(), lastVisit: "—" };
+        const created: Customer = { id: nextMockId("CUS", 10500), name: submission.name, phone: submission.phone, email: submission.email, type: "Walk-in", status: "None", branch: submission.branch, registered: nowLabel(), lastVisit: "—", classification: "Regular" };
         customers = [created, ...customers];
         resultingCustomerId = created.id;
       }
@@ -140,25 +152,50 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     const open = data.visits.find((visit) => visit.customerId === customer.id && visit.branch === branch.name && visit.status === "Checked in");
     if (open) return { kind: "duplicate" as const, customer };
     const visit: VisitRecord = { id: nextMockId("ATT", 90300), customerId: customer.id, customer: customer.name, branch: branch.name, date: nowLabel(), timeIn: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }), timeOut: "—", type: "Walk-in", source: "Manual", status: "Checked in", sync: "Pending" };
-    const walkIn: WalkIn = { id: nextMockId("VIS", 20900), customer: customer.name, customerId: customer.id, branch: branch.name, date: nowLabel(), timeIn: visit.timeIn, timeOut: "—", fee: 250, payment: "Pending", method: "—", status: "Checked in", attendanceId: visit.id };
+    const price = data.servicePrices.find((item) => item.name === "Non-member walk-in" && item.active)?.amount;
+    if (price === undefined) return { kind: "not-configured" as const };
+    const walkIn: WalkIn = { id: nextMockId("VIS", 20900), customer: customer.name, customerId: customer.id, branch: branch.name, date: nowLabel(), timeIn: visit.timeIn, timeOut: "—", fee: price, payment: "Pending", method: "—", status: "Checked in", attendanceId: visit.id };
     persist({ ...data, walkIns: [walkIn, ...data.walkIns], visits: [visit, ...data.visits] });
     return { kind: "checked-in" as const, customer, walkIn, visit };
   };
-  const recordWalkInPayment = (walkInId: string, method: string) => persist({ ...data, walkIns: data.walkIns.map((item) => item.id === walkInId ? { ...item, payment: "Paid", method } : item) });
+  const recordWalkInPayment = (walkInId: string, method: string) => {
+    const walkIn = data.walkIns.find((item) => item.id === walkInId);
+    if (!walkIn || walkIn.payment === "Paid") return;
+    const payment: PaymentRecord = { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method, reference: walkIn.id, category: "Walk-in", branch: walkIn.branch, status: "Paid", serviceName: "Walk-in access" };
+    persist({ ...data, walkIns: data.walkIns.map((item) => item.id === walkInId ? { ...item, payment: "Paid", method } : item), payments: [payment, ...data.payments] });
+  };
   const upsertCustomer = (customer: Customer) => persist({ ...data, customers: data.customers.some((item) => item.id === customer.id) ? data.customers.map((item) => item.id === customer.id ? customer : item) : [customer, ...data.customers] });
   const updateCustomer = (customer: Customer) => persist({ ...data, customers: data.customers.map((item) => item.id === customer.id ? customer : item) });
   const updateVisit = (id: string, update: Partial<VisitRecord>) => persist({ ...data, visits: data.visits.map((item) => item.id === id ? { ...item, ...update } : item) });
+  const recordManualAttendance = (input: { customerId: string; branch: string; type: "Member" | "Walk-in"; date: string; timeIn: string; timeOut: string; note?: string }) => {
+    const customer = data.customers.find((item) => item.id === input.customerId);
+    if (!customer) return { ok: false as const, error: "Select an existing customer." };
+    if (input.timeOut !== "—" && input.timeOut <= input.timeIn) return { ok: false as const, error: "Time-out must be later than time-in." };
+    const open = data.visits.find((item) => item.customerId === input.customerId && item.branch === input.branch && item.status === "Checked in" && item.timeOut === "—");
+    if (open) return { ok: false as const, error: `${customer.name} already has an open attendance session at this branch.` };
+    const visit: VisitRecord = { id: nextMockId("ATT", 90300), customerId: customer.id, customer: customer.name, branch: input.branch, date: input.date, timeIn: input.timeIn, timeOut: input.timeOut, type: input.type, source: "Manual", status: input.timeOut === "—" ? "Checked in" : "Completed", sync: "Pending", reason: input.note };
+    persist({ ...data, visits: [visit, ...data.visits] });
+    return { ok: true as const, visit };
+  };
   const updateWalkIn = (id: string, update: Partial<WalkIn>) => persist({ ...data, walkIns: data.walkIns.map((item) => item.id === id ? { ...item, ...update } : item) });
-  const addWalkIn = (walkIn: WalkIn) => persist({ ...data, walkIns: [walkIn, ...data.walkIns] });
+  const addWalkIn = (walkIn: WalkIn) => {
+    const payment = walkIn.payment === "Paid" ? { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method: walkIn.method, reference: walkIn.id, category: "Walk-in" as const, branch: walkIn.branch, status: "Paid" as const, serviceName: "Walk-in access" } : undefined;
+    persist({ ...data, walkIns: [walkIn, ...data.walkIns], payments: payment ? [payment, ...data.payments] : data.payments });
+  };
   const removeWalkIn = (id: string) => persist({ ...data, walkIns: data.walkIns.filter((item) => item.id !== id) });
-  const createMembership = (membership: Membership) => persist({ ...data, memberships: [membership, ...data.memberships] });
+  const createMembership = (membership: Membership) => {
+    const payment = membership.payment === "Paid" ? { id: nextMockId("PAY", 400), membershipId: membership.id, date: membership.start, amount: membership.price, method: membership.paymentMethod ?? "Cash", reference: membership.id, category: "Membership" as const, branch: membership.branch, status: "Paid" as const, serviceName: membership.plan } : undefined;
+    persist({ ...data, memberships: [membership, ...data.memberships], payments: payment ? [payment, ...data.payments] : data.payments });
+  };
   const updateMembership = (membership: Membership) => persist({ ...data, memberships: data.memberships.map((item) => item.id === membership.id ? membership : item) });
   const removeMembership = (id: string) => persist({ ...data, memberships: data.memberships.filter((item) => item.id !== id), payments: data.payments.filter((item) => item.membershipId !== id) });
   const addMembershipPlan = (plan: MembershipPlan) => persist({ ...data, membershipPlans: data.membershipPlans.some((item) => item.name === plan.name) ? data.membershipPlans.map((item) => item.name === plan.name ? plan : item) : [...data.membershipPlans, plan] });
+  const upsertServicePrice = (price: ServicePrice) => persist({ ...data, servicePrices: data.servicePrices.some((item) => item.id === price.id) ? data.servicePrices.map((item) => item.id === price.id ? price : item) : [...data.servicePrices, price] });
   const recordMembershipPayment = (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => {
     const membership = data.memberships.find((item) => item.id === membershipId);
     if (!membership) return;
-    const record = { ...payment, id: nextMockId("PAY", 400), membershipId };
+    if (data.payments.some((item) => item.membershipId === membershipId && item.reference === payment.reference && payment.reference)) return;
+    const record = { ...payment, id: nextMockId("PAY", 400), membershipId, category: "Membership" as const, branch: membership.branch, status: "Paid" as const, serviceName: membership.plan };
     persist({ ...data, payments: [record, ...data.payments], memberships: data.memberships.map((item) => item.id === membershipId ? { ...item, payment: "Paid", status: item.status === "Expired" ? "Active" : item.status, end: addBillingMonths(item.end, durationToMonths(item.plan)) } : item) });
   };
   const upsertCoach = (coach: Coach) => persist({ ...data, coaches: data.coaches.some((item) => item.id === coach.id) ? data.coaches.map((item) => item.id === coach.id ? coach : item) : [coach, ...data.coaches] });
@@ -169,7 +206,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   const upsertFrontDeskAccount = (account: FrontDeskAccount) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.some((item) => item.id === account.id) ? data.frontDeskAccounts.map((item) => item.id === account.id ? account : item) : [account, ...data.frontDeskAccounts] });
   const toggleFrontDeskAccount = (id: string) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Inactive" : "Active" } : item) });
   const addAuditLog = (entry: AuditLog) => persist({ ...data, auditLogs: [entry, ...data.auditLogs] });
-  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog }), [data]);
+  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog }), [data]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

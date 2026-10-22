@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from "react";
 import type { AuthAccount } from "../../contexts/AuthContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useGymData } from "../../contexts/GymDataContext";
+import type { ServicePrice } from "../../types";
+import { nextMockId } from "../../services/mockApi";
 
 type Props = {
   onAction: (message: string) => void;
@@ -34,6 +37,7 @@ function readSettings(role: "Admin" | "Front Desk", accountId?: string): Display
 export default function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: Props) {
   const { role } = useAuth();
   const isAdmin = role === "Admin";
+  const { servicePrices, upsertServicePrice } = useGymData();
   const [initialSettings] = useState(() => readSettings(role, account?.id));
   const [name, setName] = useState(initialSettings.name);
   const [currency, setCurrency] = useState(initialSettings.currency);
@@ -47,6 +51,8 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [securityMessage, setSecurityMessage] = useState("");
   const [securityError, setSecurityError] = useState("");
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceAmount, setNewServiceAmount] = useState("0");
 
   const saveEmail = async () => {
     if (!onChangeEmail) return;
@@ -74,6 +80,21 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
     const key = isAdmin ? settingsKey : `${settingsKey}:${role}:${account?.id ?? "unknown"}`;
     localStorage.setItem(key, JSON.stringify({ name, currency, requireReason, notifications }));
     onAction("Settings saved");
+  };
+  const savePrice = (price: ServicePrice, amount: string, studentAmount: string) => {
+    const value = Number(amount);
+    const studentValue = studentAmount.trim() === "" ? undefined : Number(studentAmount);
+    if (!Number.isFinite(value) || value < 0 || Math.round(value * 100) !== value * 100 || (studentValue !== undefined && (!Number.isFinite(studentValue) || studentValue < 0 || Math.round(studentValue * 100) !== studentValue * 100))) return;
+    upsertServicePrice({ ...price, amount: value, studentAmount: studentValue });
+    onAction(`${price.name} price updated`);
+  };
+  const addServicePrice = () => {
+    const amount = Number(newServiceAmount);
+    if (!newServiceName.trim() || !Number.isFinite(amount) || amount < 0 || Math.round(amount * 100) !== amount * 100) return;
+    upsertServicePrice({ id: nextMockId("SR", 10), name: newServiceName.trim(), category: "Other service", amount, active: true });
+    setNewServiceName("");
+    setNewServiceAmount("0");
+    onAction("Service price added");
   };
 
   return (
@@ -125,6 +146,13 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
               <Toggle label="Require a reason for manual corrections" checked={requireReason} setChecked={setRequireReason} />
               <Toggle label="Show sync notifications" checked={notifications} setChecked={setNotifications} />
             </Panel>
+            <Panel title="Service pricing">
+              <p className="mb-4 text-xs text-[var(--text-muted)]">Prices apply to new transactions. Recorded payment amounts are not changed when a rate is updated.</p>
+              <div className="space-y-3">
+                {servicePrices.map((price) => <PriceRow key={price.id} price={price} onSave={savePrice} onToggle={() => upsertServicePrice({ ...price, active: !price.active })} />)}
+              </div>
+              <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4"><label className="min-w-[220px] flex-1"><span className="mb-1 block text-xs text-[var(--text-muted)]">New optional service</span><input value={newServiceName} onChange={(event) => setNewServiceName(event.target.value)} placeholder="e.g. Day pass" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Price (₱)</span><input type="number" min="0" step="0.01" value={newServiceAmount} onChange={(event) => setNewServiceAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={addServicePrice} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--on-accent)]">Add service</button></div>
+            </Panel>
             <Panel title="Account email">
               <p className="mb-4 text-xs text-[var(--text-muted)]">Current account: {account?.email ?? "—"}. Email changes require verification in production.</p>
               <div className="grid gap-4 sm:grid-cols-2"><TextField label="New email" value={newEmail} onChange={setNewEmail} placeholder="new-email@example.com" /><TextField label="Confirm new email" value={emailConfirmation} onChange={setEmailConfirmation} placeholder="Repeat new email" /><PasswordField label="Current password" value={emailPassword} onChange={setEmailPassword} /></div>
@@ -159,4 +187,9 @@ function PasswordField({ label, value, onChange }: { label: string; value: strin
 }
 function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (value: boolean) => void }) {
   return <label className="flex items-center justify-between border-b border-[var(--border)] py-3 text-sm last:border-0"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} /></label>;
+}
+function PriceRow({ price, onSave, onToggle }: { key?: string; price: ServicePrice; onSave: (price: ServicePrice, amount: string, studentAmount: string) => void; onToggle: () => void }) {
+  const [amount, setAmount] = useState(String(price.amount));
+  const [studentAmount, setStudentAmount] = useState(price.studentAmount === undefined ? "" : String(price.studentAmount));
+  return <div className="flex flex-wrap items-end gap-3 border-b border-[var(--border)] pb-3 last:border-0"><div className="min-w-[190px] flex-1"><p className="text-sm font-medium">{price.name}</p><p className="text-xs text-[var(--text-muted)]">{price.category}</p></div><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Regular (₱)</span><input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Student (₱)</span><input type="number" min="0" step="0.01" value={studentAmount} onChange={(event) => setStudentAmount(event.target.value)} placeholder="Not set" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={() => onSave(price, amount, studentAmount)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">Save</button><button onClick={onToggle} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">{price.active ? "Deactivate" : "Activate"}</button></div>;
 }

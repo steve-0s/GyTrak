@@ -15,6 +15,7 @@ export type Customer = {
   plan?: string
   endDate?: string
   keyfob?: string
+  classification?: "Regular" | "Student"
 }
 export type RegistrationStatus = "Pending" | "Needs correction" | "Approved" | "Rejected"
 export type RegistrationSubmission = {
@@ -65,8 +66,9 @@ export type VisitRecord = {
 }
 export type MembershipStatus = "Active" | "Pending" | "Expired" | "Suspended"
 export type PaymentStatus = "Paid" | "Pending"
-export type MembershipPlan = { name: string; duration: string; price: number; active: boolean; used: number }
-export type PaymentRecord = { id: string; membershipId: string; date: string; amount: number; method: string; reference: string }
+export type MembershipPlan = { name: string; duration: string; price: number; studentPrice?: number; active: boolean; used: number }
+export type ServicePrice = { id: string; name: string; category: "Walk-in access" | "Coaching" | "Other service"; amount: number; studentAmount?: number; active: boolean }
+export type PaymentRecord = { id: string; membershipId: string; date: string; amount: number; method: string; reference: string; category?: "Membership" | "Walk-in" | "Coaching" | "Other service"; branch?: string; status?: PaymentStatus; serviceName?: string }
 export type Membership = {
   id: string
   customer: string
@@ -76,6 +78,7 @@ export type Membership = {
   end: string
   status: MembershipStatus
   payment: PaymentStatus
+  paymentMethod?: string
   branch: string
   price: number
 }

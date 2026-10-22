@@ -282,10 +282,10 @@ function BranchList({
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
               {rows.map((branch) => (
-                <tr key={branch.name} className="hover:bg-[var(--bg)]">
+                <tr key={branch.name} tabIndex={0} onClick={() => onSelect(branch)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(branch); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
                   <td className="px-5 py-4">
                     <button
-                      onClick={() => onSelect(branch)}
+                      onClick={(event) => { event.stopPropagation(); onSelect(branch); }}
                       className="font-semibold hover:text-[var(--accent)]"
                     >
                       {branch.name}
@@ -305,7 +305,7 @@ function BranchList({
                   <td className="px-5 py-4">{branch.memberships}</td>
                   <td className="px-5 py-4">{branch.visits}</td>
                   <td className="px-5 py-4">{php(branch.revenue)}</td>
-                  <td className="px-5 py-4 text-right">
+                  <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
                     <button
                       onClick={() => onEdit(branch)}
                       className="font-semibold text-[var(--accent)]"

@@ -420,7 +420,7 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
             <div key={item.id} className="rounded-lg border border-[var(--border)] p-3">
               <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{item.name}</p><span className="text-[11px] text-amber-500">{item.possibleCustomerIds.length ? "Possible duplicate" : item.status}</span></div>
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">{item.reference} · {new Date(item.submittedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}</p>
-              <button onClick={() => onAction("Open QR Registrations from the navigation")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review submission</button>
+              <button onClick={() => onAction("Customers opened")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review in Customers</button>
             </div>
           ))}
           {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).length === 0 && <p className="p-3 text-xs text-[var(--text-muted)]">No profile registrations are waiting for review.</p>}

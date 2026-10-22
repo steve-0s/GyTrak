@@ -10,9 +10,9 @@ import {
 import { formatPHP as php } from "../../lib/utils";
 import { addBillingMonths, durationToMonths, membershipDueState } from "../../lib/membership";
 import Modal from "../../components/shared/Modal";
-import { nextMockId } from "../../services/mockApi";
+import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
-import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan } from "../../types";
+import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, ServicePrice } from "../../types";
 
 type WalkIn = {
   id: string;
@@ -53,7 +53,7 @@ export default function WalkInsMembershipsPage({
   initialView = "walkins",
   openWalkInSignal = 0,
 }: Props) {
-  const { customers, walkIns, memberships, membershipPlans: plans, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordMembershipPayment } = useGymData();
+  const { customers, walkIns, memberships, membershipPlans: plans, servicePrices, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordWalkInPayment, recordMembershipPayment } = useGymData();
   const [view, setView] = useState<"walkins" | "memberships" | "plans">(
     initialView,
   );
@@ -99,7 +99,7 @@ export default function WalkInsMembershipsPage({
         visit={selectedWalkIn}
         onBack={() => setSelectedWalkIn(null)}
         onPayment={(method) => {
-          updateWalkIn(selectedWalkIn.id, { payment: "Paid", method });
+          recordWalkInPayment(selectedWalkIn.id, method);
           setSelectedWalkIn({ ...selectedWalkIn, payment: "Paid", method });
           onAction("Walk-in payment recorded");
         }}
@@ -133,6 +133,7 @@ export default function WalkInsMembershipsPage({
       <Modal label="Register walk-in" onClose={() => setWalkInForm(false)} wide>
           <WalkInForm
         customers={customers}
+        servicePrices={servicePrices}
         branch={
           scopedBranch === "All branches" ? "Makati Central" : scopedBranch
         }
@@ -379,7 +380,7 @@ function WalkInList({
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-[var(--bg)]">
+              <tr key={row.id} tabIndex={0} onClick={() => onSelect(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(row); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
                 <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
                   {row.id}
                 </td>
@@ -402,7 +403,7 @@ function WalkInList({
                     {row.payment}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-right">
+                <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
                   <RowActions onDetails={() => onSelect(row)} onDelete={() => onDelete(row)} />
                 </td>
               </tr>
@@ -506,7 +507,7 @@ function MembershipList({
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-[var(--bg)]">
+              <tr key={row.id} tabIndex={0} onClick={() => onSelect(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(row); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
                 <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
                   {row.id}
                 </td>
@@ -536,7 +537,7 @@ function MembershipList({
                 <td className="px-5 py-4 text-[var(--text-muted)]">
                   {row.branch}
                 </td>
-                <td className="px-5 py-4 text-right">
+                <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
                   <RowActions onDetails={() => onSelect(row)} onDelete={() => onDelete(row)} />
                 </td>
               </tr>
@@ -645,19 +646,23 @@ function DataTable({
 
 function WalkInForm({
   customers,
+  servicePrices,
   branch,
   onBack,
   onSave,
 }: {
   customers: Array<{ id: string; name: string }>;
+  servicePrices: ServicePrice[];
   branch: string;
   onBack: () => void;
   onSave: (visit: WalkIn) => void;
 }) {
   const [existing, setExisting] = useState(true);
   const [name, setName] = useState("");
-  const [fee, setFee] = useState("250");
+  const [fee, setFee] = useState(() => String(servicePrices.find((item) => item.name === "Non-member walk-in" && item.active)?.amount ?? ""));
+  const [service, setService] = useState("Non-member walk-in");
   const [payment, setPayment] = useState<"Paid" | "Pending">("Paid");
+  const [method, setMethod] = useState("Cash");
   const [checkedIn, setCheckedIn] = useState(false);
   const [error, setError] = useState("");
   const submit = () => {
@@ -672,17 +677,20 @@ function WalkInForm({
     );
     if (existing && !matchedCustomer)
       return setError("Select an existing customer from the customer records.");
+    const configured = servicePrices.find((item) => item.name === service && item.active);
+    const parsedFee = Number(fee);
+    if (!configured || !Number.isFinite(parsedFee) || parsedFee < 0) return setError("Select an active service and enter a valid configured price.");
     onSave({
       id: nextMockId("VIS", 20850),
       customer: name,
       customerId: matchedCustomer?.id ?? nextMockId("CUS", 10501),
       branch,
-      date: "Oct 20, 2026",
+      date: nowLabel(),
       timeIn: checkedIn ? "Now" : "Not checked in",
       timeOut: "—",
-      fee: Number(fee) || 0,
+      fee: parsedFee,
       payment,
-      method: payment === "Paid" ? "Cash" : "—",
+      method: payment === "Paid" ? method : "—",
       status: checkedIn ? "Checked in" : "Registered",
     });
   };
@@ -719,6 +727,7 @@ function WalkInForm({
           />
         </div>
         <Field label="Branch" value={branch} disabled />
+        <label className="block"><span className="mb-1.5 block text-xs font-medium">Service</span><select value={service} onChange={(event) => { const value = event.target.value; setService(value); const configured = servicePrices.find((item) => item.name === value && item.active); setFee(configured ? String(configured.amount) : ""); }} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm">{servicePrices.filter((item) => item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label>
         <Field label="Visit fee" value={fee} onChange={setFee} prefix="₱" />
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium">
@@ -741,6 +750,8 @@ function WalkInForm({
           </span>
           <select
             disabled={payment === "Pending"}
+            value={method}
+            onChange={(event) => setMethod(event.target.value)}
             className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
           >
             <option>Cash</option>
@@ -842,6 +853,7 @@ function MembershipForm({
   const [plan, setPlan] = useState(plans[0].name);
   const selected = plans.find((item) => item.name === plan) ?? plans[0];
   const [payment, setPayment] = useState<"Paid" | "Pending">("Pending");
+  const [method, setMethod] = useState("Cash");
   const [error, setError] = useState("");
   return (
     <FormShell
@@ -875,6 +887,7 @@ function MembershipForm({
               ))}
           </select>
         </label>
+        <label className="block"><span className="mb-1.5 block text-xs font-medium">Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)} disabled={payment === "Pending"} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select></label>
         <Info label="Plan price" value={php(selected.price)} />
         <Info label="Branch" value={branch} />
         <label className="block">
@@ -912,10 +925,11 @@ function MembershipForm({
             customer: matchedCustomer.name,
             customerId: matchedCustomer.id,
             plan: selected.name,
-            start: "Oct 20, 2026",
-            end: addBillingMonths("Oct 20, 2026", durationToMonths(selected.duration)),
+            start: nowLabel(),
+            end: addBillingMonths(nowLabel(), durationToMonths(selected.duration)),
             status: payment === "Paid" ? "Active" : "Pending",
             payment,
+            paymentMethod: payment === "Paid" ? method : undefined,
             branch,
             price: selected.price,
           });
@@ -950,7 +964,7 @@ function MembershipDetails({
   const dueState = membershipDueState(membership.end);
   const recordPayment = () => {
     const payment = {
-      date: "Oct 20, 2026",
+      date: nowLabel(),
       amount: Number(amount) || 0,
       method,
       reference: reference.trim() || "—",

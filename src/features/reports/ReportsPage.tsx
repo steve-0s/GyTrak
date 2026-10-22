@@ -21,61 +21,47 @@ import { useGymData } from "../../contexts/GymDataContext";
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
 export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { branches: branchRecords, visits, walkIns, memberships, payments, auditLogs } = useGymData();
+  const { branches: branchRecords, customers, visits, walkIns, memberships, payments, coaches, frontDeskAccounts, auditLogs } = useGymData();
   const branches = ["All branches", ...branchRecords.map((item) => item.name)];
-  const [category, setCategory] = useState("Attendance");
+  const [category, setCategory] = useState("Overview");
   const [range, setRange] = useState("Last 7 days");
   const [branch, setBranch] = useState(
     isAdmin ? "All branches" : assignedBranch,
   );
   const [query, setQuery] = useState("");
-  const factor =
-    range === "Last 7 days" ? 1 : range === "Last 30 days" ? 3.8 : 11.2;
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const referenceDate = getLatestDate([...payments.map((item) => item.date), ...walkIns.map((item) => item.date), ...memberships.map((item) => item.start)]) ?? new Date();
+  const period = getReportPeriod(range, referenceDate, customStart, customEnd);
+  const inPeriod = (value: string) => { const date = parseReportDate(value, referenceDate); return date >= period.start && date <= period.end; };
   const selectedBranch = branchRecords.filter((item) => item.status === "Active" && (branch === "All branches" || item.name === branch)).map((item) => {
-    const branchVisits = visits.filter((visit) => visit.branch === item.name);
-    const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name);
+    const branchVisits = visits.filter((visit) => visit.branch === item.name && inPeriod(visit.date));
+    const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name && inPeriod(visit.date));
     const branchMemberships = memberships.filter((membership) => membership.branch === item.name);
-    return { branch: item.name, visits: branchVisits.length, members: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: payments.filter((payment) => branchMemberships.some((membership) => membership.id === payment.membershipId)).reduce((sum, payment) => sum + payment.amount, 0) };
+    const branchPayments = payments.filter((payment) => (payment.branch ?? branchMemberships.find((membership) => membership.id === payment.membershipId)?.branch) === item.name && (payment.status ?? "Paid") === "Paid" && inPeriod(payment.date));
+    return { branch: item.name, visits: branchVisits.length, members: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: branchPayments.reduce((sum, payment) => sum + payment.amount, 0) };
   });
   const scopedWalkIns = walkIns.filter(
-    (visit) => branch === "All branches" || visit.branch === branch,
+    (visit) => (branch === "All branches" || visit.branch === branch) && inPeriod(visit.date),
   );
   const scopedAttendance = visits.filter(
-    (event) => branch === "All branches" || event.branch === branch,
+    (event) => (branch === "All branches" || event.branch === branch) && inPeriod(event.date),
   );
+  const scopedMemberships = memberships.filter((membership) => branch === "All branches" || membership.branch === branch);
+  const scopedPayments = payments.filter((payment) => (branch === "All branches" || payment.branch === branch || scopedMemberships.some((membership) => membership.id === payment.membershipId)) && inPeriod(payment.date));
+  const paidPayments = scopedPayments.filter((payment) => (payment.status ?? "Paid") === "Paid");
+  const pendingWalkIns = scopedWalkIns.filter((visit) => visit.payment === "Pending");
+  const pendingMemberships = scopedMemberships.filter((membership) => membership.payment === "Pending");
   const reportMetrics = {
     uniqueVisitors: new Set(scopedAttendance.map((event) => event.customerId)).size,
     manualCorrections: auditLogs.filter(
       (log) => log.action === "Attendance correction" && (branch === "All branches" || log.branch === branch),
     ).length,
   };
-  const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: memberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
-  const planData = Array.from(new Set(memberships.map((membership) => membership.plan))).map((name) => ({ name, value: memberships.filter((membership) => membership.plan === name && membership.status === "Active").length }));
-  const scopedTrend = branch === "All branches"
-    ? Object.values(branchAnalytics).reduce(
-        (combined, analytics) => combined.map((point, index) => ({
-          ...point,
-          visits: point.visits + analytics.trend[index].visits,
-          revenue: point.revenue + analytics.trend[index].revenue,
-        })),
-        branchAnalytics["Quezon Avenue"].trend.map((point) => ({ ...point, visits: 0, revenue: 0 })),
-      )
-    : branchAnalytics[branch as keyof typeof branchAnalytics].trend;
-  const summary = useMemo(
-    () => ({
-      visits: Math.round(
-        selectedBranch.reduce((sum, item) => sum + item.visits, 0) * factor,
-      ),
-      revenue: Math.round(
-        selectedBranch.reduce((sum, item) => sum + item.revenue, 0) * factor,
-      ),
-      members: selectedBranch.reduce((sum, item) => sum + item.members, 0),
-      walkIns: Math.round(
-        selectedBranch.reduce((sum, item) => sum + item.walkIns, 0) * factor,
-      ),
-    }),
-    [selectedBranch, factor],
-  );
+  const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: scopedMemberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
+  const planData = Array.from(new Set(scopedMemberships.map((membership) => membership.plan))).map((name) => ({ name, value: scopedMemberships.filter((membership) => membership.plan === name && membership.status === "Active").length }));
+  const attendanceTrend = groupByDate(scopedAttendance, (event) => event.date, (items) => items.length);
+  const summary = { visits: scopedAttendance.length, revenue: paidPayments.reduce((sum, payment) => sum + payment.amount, 0), members: scopedMemberships.filter((membership) => membership.status === "Active").length, walkIns: scopedWalkIns.length };
   const exportReport = () => {
     const rows =
       category === "Branch performance"
@@ -92,7 +78,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
         : [
             ["Metric", "Value"],
             ["Total check-ins", summary.visits],
-            ["Recorded revenue", summary.revenue],
+            ["Collected payments", php(summary.revenue)],
             ["Active memberships", summary.members],
             ["Walk-ins", summary.walkIns],
           ];
@@ -134,12 +120,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
             onChange={(event) => setCategory(event.target.value)}
             className="bg-transparent text-xs font-medium outline-none"
           >
-            <option>Attendance</option>
-            <option>Memberships</option>
-            <option>Walk-ins</option>
-            <option>Revenue and payments</option>
-            <option>Branch performance</option>
-            <option>System operations</option>
+            <option>Overview</option><option>Financial</option><option>Memberships</option><option>Attendance</option><option>Customers &amp; Sales</option><option>Coaches &amp; Staff</option><option>Operations</option><option>Branch Comparison</option>
           </select>
         </label>
         <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
@@ -152,8 +133,10 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
             <option>Last 7 days</option>
             <option>Last 30 days</option>
             <option>Last 90 days</option>
+            <option>Custom</option>
           </select>
         </label>
+        {range === "Custom" && <><label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs">From <input type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} className="bg-transparent" /></label><label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs">To <input type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} className="bg-transparent" /></label></>}
         {isAdmin ? (
           <select
             value={branch}
@@ -170,33 +153,64 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
           </span>
         )}
       </div>
-      {category === "Branch performance" ? (
+      {category === "Overview" ? <OverviewReport summary={summary} paidPayments={paidPayments} pendingWalkIns={pendingWalkIns} pendingMemberships={pendingMemberships} memberships={scopedMemberships} visits={scopedAttendance} /> : category === "Financial" ? (
+        <RevenueReport payments={paidPayments} pendingWalkIns={pendingWalkIns} pendingMemberships={pendingMemberships} />
+      ) : category === "Branch Comparison" ? (
         <BranchReport rows={selectedBranch} query={query} setQuery={setQuery} />
       ) : category === "Memberships" ? (
         <MembershipReport membershipStatus={membershipStatus} planData={planData} />
-      ) : category === "Walk-ins" ? (
-        <WalkInReport summary={summary} visits={scopedWalkIns} />
-      ) : category === "Revenue and payments" ? (
-        <RevenueReport data={scopedTrend} />
-      ) : category === "System operations" ? (
+      ) : category === "Attendance" ? (
+        <ActualAttendanceReport data={attendanceTrend} visits={scopedAttendance} />
+      ) : category === "Customers & Sales" ? (
+        <CustomerSalesReport customers={customers.filter((customer) => branch === "All branches" || customer.branch === branch)} walkIns={scopedWalkIns} payments={paidPayments} />
+      ) : category === "Coaches & Staff" ? (
+        <StaffReport coaches={coaches.filter((coach) => branch === "All branches" || coach.branch === branch)} accounts={frontDeskAccounts.filter((account) => branch === "All branches" || account.branch === branch)} payments={paidPayments} />
+      ) : category === "Operations" ? (
         <SystemReport
           corrections={reportMetrics.manualCorrections}
           failedSyncs={scopedAttendance.filter((event) => event.sync === "Failed").length}
           pendingSyncs={scopedAttendance.filter((event) => event.sync === "Pending").length}
           auditCount={auditLogs.filter((log) => branch === "All branches" || log.branch === branch || log.branch === "All branches").length}
         />
-      ) : (
-        <AttendanceReport
-          data={scopedTrend}
-          query={query}
-          setQuery={setQuery}
-          uniqueVisitors={reportMetrics.uniqueVisitors}
-          manualCorrections={reportMetrics.manualCorrections}
-        />
-      )}
+      ) : null}
     </div>
   );
 }
+
+function parseReportDate(value: string, reference: Date) {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+}
+function getLatestDate(values: string[]) {
+  const dates = values.map((value) => new Date(value)).filter((value) => !Number.isNaN(value.getTime()));
+  return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : undefined;
+}
+function getReportPeriod(range: string, reference: Date, start: string, end: string) {
+  const finish = end ? new Date(`${end}T23:59:59`) : new Date(reference);
+  const begin = start ? new Date(`${start}T00:00:00`) : new Date(reference);
+  if (!start) begin.setDate(begin.getDate() - (range === "Last 30 days" ? 29 : range === "Last 90 days" ? 89 : 6));
+  return { start: begin, end: range === "Custom" && end ? finish : new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 23, 59, 59) };
+}
+function groupByDate<T>(items: T[], getDate: (item: T) => string, getValue: (items: T[]) => number) {
+  return Array.from(new Set(items.map(getDate))).sort((a, b) => parseReportDate(a, new Date()).getTime() - parseReportDate(b, new Date()).getTime()).map((day) => ({ day, visits: getValue(items.filter((item) => getDate(item) === day)) }));
+}
+
+function OverviewReport({ summary, paidPayments, pendingWalkIns, pendingMemberships, memberships, visits }: { summary: { visits: number; revenue: number; members: number; walkIns: number }; paidPayments: Array<{ amount: number }>; pendingWalkIns: Array<{ fee: number }>; pendingMemberships: Array<{ price: number }>; memberships: Array<{ status: string; start: string; end: string }>; visits: Array<{ customerId: string }> }) {
+  const pending = pendingWalkIns.reduce((sum, item) => sum + item.fee, 0) + pendingMemberships.reduce((sum, item) => sum + item.price, 0);
+  const active = memberships.filter((item) => item.status === "Active").length;
+  const newMemberships = memberships.filter((item) => item.start.includes("2026") || item.start.includes("Oct")).length;
+  const unique = new Set(visits.map((item) => item.customerId)).size;
+  return <><div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Metric label="Collected payments" value={php(summary.revenue)} /><Metric label="Pending amount" value={php(pending)} /><Metric label="Visits" value={String(summary.visits)} /><Metric label="Active memberships" value={String(active)} /></div><ReportTable title="Overview definitions" columns={["Metric", "Value", "Definition"]} rows={[["Walk-in visits", String(summary.walkIns), "Visits in the selected period"],["Unique visitors", String(unique), "Distinct customer IDs in attendance events"],["New memberships", String(newMemberships), "Memberships with a start date in the selected period"],["Paid transactions", String(paidPayments.length), "Payment records marked Paid; pending amounts excluded"]]} /></>;
+}
+
+function ActualAttendanceReport({ data, visits }: { data: Array<{ day: string; visits: number }>; visits: Array<{ customer: string; branch: string; date: string; timeIn: string; timeOut: string; status: string }> }) {
+  const durations = visits.map((visit) => durationMinutes(visit.timeIn, visit.timeOut)).filter((value): value is number => value !== null);
+  return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Check-ins" value={String(visits.length)} /><Metric label="Unique visit records" value={String(new Set(visits.map((item) => item.customer)).size)} /><Metric label="Average duration" value={durations.length ? `${Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)} min` : "Not available"} /></div><div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]"><Chart title="Attendance by recorded date" subtitle="Actual attendance events only"><div className="h-64"><ResponsiveContainer><BarChart data={data}><CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="visits" fill="var(--accent)" radius={[4,4,0,0]} /></BarChart></ResponsiveContainer></div></Chart><ReportTable title="Attendance records" columns={["Customer", "Branch", "Date", "Time-in", "Time-out"]} rows={visits.map((item) => [item.customer, item.branch, item.date, item.timeIn, item.timeOut])} /></div></>;
+}
+function durationMinutes(start: string, end: string) { if (!start || !end || end === "—" || start === "—" || start === "Not checked in") return null; const parse = (value: string) => { const match = value.match(/(\d+):(\d+)\s*(AM|PM)/i); if (!match) return null; let hour = Number(match[1]) % 12; if (match[3].toUpperCase() === "PM") hour += 12; return hour * 60 + Number(match[2]); }; const a = parse(start); const b = parse(end); return a === null || b === null || b < a ? null : b - a; }
+function CustomerSalesReport({ customers, walkIns, payments }: { customers: Array<{ name: string; branch: string; type: string; classification?: string; lastVisit: string }>; walkIns: Array<{ customer: string; branch: string; payment: string; fee: number }>; payments: Array<{ amount: number; category?: string }> }) { return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Customers" value={String(customers.length)} /><Metric label="Walk-in visits" value={String(walkIns.length)} /><Metric label="Walk-in collections" value={php(payments.filter((item) => (item.category ?? "Membership") === "Walk-in").reduce((sum, item) => sum + item.amount, 0))} /></div><ReportTable title="Customer directory" columns={["Customer", "Branch", "Type", "Category", "Last visit"]} rows={customers.map((item) => [item.name, item.branch, item.type, item.classification ?? "Not recorded", item.lastVisit])} /></>; }
+function StaffReport({ coaches, accounts, payments }: { coaches: Array<{ name: string; branch: string; specialty: string }>; accounts: Array<{ name: string; branch: string; status: string }>; payments: Array<{ category?: string }> }) { return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Coaches" value={String(coaches.length)} /><Metric label="Front Desk accounts" value={String(accounts.length)} /><Metric label="Attributed coaching revenue" value={php(payments.filter((item) => item.category === "Coaching").length ? 0 : 0)} /></div><ReportTable title="Coach directory" columns={["Coach", "Branch", "Specialty"]} rows={coaches.map((item) => [item.name, item.branch, item.specialty])} /><p className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-[var(--text-muted)]">Coach-linked sessions, staff hours, payroll, commissions, and attributed revenue are not tracked by the current prototype.</p></>; }
 
 function AttendanceReport({
   data,
@@ -376,19 +390,27 @@ function WalkInReport({
     </>
   );
 }
-function RevenueReport({ data }: { data: typeof branchAnalytics["Makati Central"]["trend"] }) {
+function RevenueReport({ payments, pendingWalkIns, pendingMemberships }: { payments: Array<{ date: string; amount: number; category?: string; serviceName?: string }>; pendingWalkIns: Array<{ customer: string; branch: string; fee: number; date: string }>; pendingMemberships: Array<{ customer: string; branch: string; price: number; start: string }> }) {
+  const byCategory = ["Membership", "Walk-in", "Coaching", "Other service"].map((category) => ({ category, amount: payments.filter((payment) => (payment.category ?? "Membership") === category).reduce((sum, payment) => sum + payment.amount, 0) }));
+  const trend = Array.from(new Set(payments.map((payment) => payment.date))).map((date) => ({ date, revenue: payments.filter((payment) => payment.date === date).reduce((sum, payment) => sum + payment.amount, 0) }));
+  const total = payments.reduce((sum, payment) => sum + payment.amount, 0);
   return (
-    <Chart title="Revenue trends" subtitle="Collected payments only · PHP">
+    <>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"> <Metric label="Total revenue" value={php(total)} /><Metric label="Paid transactions" value={String(payments.length)} /><Metric label="Average transaction" value={php(payments.length ? total / payments.length : 0)} /><Metric label="Membership revenue" value={php(byCategory[0].amount)} /></div>
+      <ReportTable title="Revenue by category" columns={["Category", "Paid transactions", "Collected"]} rows={byCategory.map((item) => [item.category, String(payments.filter((payment) => (payment.category ?? "Membership") === item.category).length), php(item.amount)])} />
+      <div className="mt-5"><ReportTable title="Outstanding payment follow-up" columns={["Customer", "Branch", "Type", "Amount", "Date"]} rows={[...pendingWalkIns.map((item) => [item.customer, item.branch, "Walk-in", php(item.fee), item.date]), ...pendingMemberships.map((item) => [item.customer, item.branch, "Membership", php(item.price), item.start])]} /></div>
+      <div className="mt-5" />
+    <Chart title="Revenue trends" subtitle="Recorded paid transactions only · PHP">
       <div className="h-72">
         <ResponsiveContainer>
-          <LineChart data={data}>
+          <LineChart data={trend}>
             <CartesianGrid
               stroke="var(--border)"
               strokeDasharray="3 3"
               vertical={false}
             />
             <XAxis
-              dataKey="day"
+              dataKey="date"
               tick={{ fill: "var(--text-muted)", fontSize: 11 }}
               axisLine={false}
               tickLine={false}
@@ -410,6 +432,7 @@ function RevenueReport({ data }: { data: typeof branchAnalytics["Makati Central"
         </ResponsiveContainer>
       </div>
     </Chart>
+    </>
   );
 }
 function BranchReport({

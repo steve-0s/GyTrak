@@ -46,7 +46,6 @@ import StaffScreen from "../roles/admin/screens/StaffScreen";
 import AuditLogsScreen from "../roles/admin/screens/AuditLogsScreen";
 import ReportsPage from "../shared/screens/ReportsScreen";
 import QRRegistrationPage from "../shared/screens/QRRegistrationScreen";
-import QRRegistrationsPage from "../roles/front-desk/screens/QRRegistrationReviewScreen";
 import QRSettingsPage from "../roles/admin/screens/QRSettingsScreen";
 import SettingsPage from "../roles/admin/screens/SettingsScreen";
 import CoachesPage from "../roles/front-desk/screens/CoachesScreen";
@@ -62,6 +61,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import RoleLayout from "../shared/layouts/RoleLayout";
 import PageContainer from "../shared/layouts/PageContainer";
+import Sidebar from "../shared/components/Sidebar";
+import Header from "../shared/components/Header";
 import { activePageFromPath, canAccessPage, getNavigationGroups, pagePaths, publicRoutes } from "./routes";
 
 const icons = {
@@ -145,7 +146,6 @@ function App() {
       ["Front Desk account list opened", "Front Desk Accounts"],
       ["Branch details opened", "Branches"],
       ["Activity log opened", "Audit Logs"],
-      ["Open QR Registrations from the navigation", "QR Registrations"],
       ["Reports opened", isAdmin ? "Reports" : "Branch Reports"],
     ];
     if (message === "New customer form opened") setCustomerCreateSignal((value) => value + 1);
@@ -154,7 +154,7 @@ function App() {
     if (message.endsWith(" payment follow-up opened")) selectPage("Walk-ins & Memberships");
     if (message.endsWith(" details opened")) selectPage("Branches");
     if (message === "Memberships expiring soon opened") selectPage("Walk-ins & Memberships");
-    if (message === "Pending registrations opened") selectPage("QR Registrations");
+    if (message === "Pending registrations opened") selectPage("Customers");
     if (message === "Sync queue opened") selectPage("Scanner and Sync Status");
     const destination = destinations.find(([trigger]) => message === trigger)?.[1];
     if (destination) selectPage(destination);
@@ -183,7 +183,9 @@ function App() {
 
   return (
     <RoleLayout role={role} theme={theme}>
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col">
+      <Sidebar navGroups={navGroups} currentPage={currentPage} onNavigate={selectPage} icons={icons} />
+      <Header role={role} accountName={account?.name} now={now} visible={headerVisible} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} onRoleSwitch={handleRoleSwitch} onSignOut={signOut} onNotify={() => showNotice("No new notifications")} />
+      <aside className="hidden fixed inset-y-0 left-0 z-20 w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col">
         <div className="flex h-20 items-center gap-3 border-b border-[var(--border)] px-7">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)] text-[var(--on-accent)]">
             <Activity size={19} />
@@ -239,9 +241,7 @@ function App() {
       </aside>
 
       <main className="lg:pl-64">
-        <header
-          className={`sticky top-0 z-30 flex h-20 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5 transition-transform duration-300 ease-out sm:px-8 ${headerVisible ? "translate-y-0" : "-translate-y-full"}`}
-        >
+        <header className="hidden">
           <div className="flex items-center gap-3">
             <button
               className="lg:hidden"
@@ -321,8 +321,6 @@ function App() {
         <PageContainer>
           {currentPage === "Customers" ? (
             <CustomersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} openCreateSignal={customerCreateSignal} />
-          ) : currentPage === "QR Registrations" ? (
-            <QRRegistrationsPage />
           ) : currentPage === "Coaches" ? (
             <CoachesPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Walk-ins & Memberships" ? (
