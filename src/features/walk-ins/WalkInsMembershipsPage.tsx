@@ -13,6 +13,7 @@ import Modal from "../../components/shared/Modal";
 import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, ServicePrice } from "../../types";
+import { CustomerForm, type Customer } from "../customers/CustomersPage";
 
 type WalkIn = {
   id: string;
@@ -53,7 +54,7 @@ export default function WalkInsMembershipsPage({
   initialView = "walkins",
   openWalkInSignal = 0,
 }: Props) {
-  const { customers, walkIns, memberships, membershipPlans: plans, servicePrices, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordWalkInPayment, recordMembershipPayment } = useGymData();
+  const { customers, walkIns, memberships, membershipPlans: plans, servicePrices, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordWalkInPayment, recordMembershipPayment, upsertCustomer } = useGymData();
   const [view, setView] = useState<"walkins" | "memberships" | "plans">(
     initialView,
   );
@@ -61,10 +62,17 @@ export default function WalkInsMembershipsPage({
   const [selectedMembership, setSelectedMembership] =
     useState<Membership | null>(null);
   const [walkInForm, setWalkInForm] = useState(false);
+  const [walkInCustomerForm, setWalkInCustomerForm] = useState(false);
+  const [createdWalkInCustomer, setCreatedWalkInCustomer] = useState<Customer | null>(null);
   const [membershipForm, setMembershipForm] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : assignedBranch);
+  const closeWalkInFlow = () => {
+    setWalkInForm(false);
+    setWalkInCustomerForm(false);
+    setCreatedWalkInCustomer(null);
+  };
   useEffect(() => {
     if (openWalkInSignal) setWalkInForm(true);
   }, [openWalkInSignal]);
@@ -130,21 +138,40 @@ export default function WalkInsMembershipsPage({
     );
   if (walkInForm)
     return (
-      <Modal label="Register walk-in" onClose={() => setWalkInForm(false)} wide>
+      <>
+        <Modal label="Register walk-in" onClose={closeWalkInFlow} wide>
           <WalkInForm
         customers={customers}
+        createdCustomer={createdWalkInCustomer}
         servicePrices={servicePrices}
         branch={
           scopedBranch === "All branches" ? "Makati Central" : scopedBranch
         }
-        onBack={() => setWalkInForm(false)}
+        onBack={closeWalkInFlow}
+        onNewProfile={() => setWalkInCustomerForm(true)}
         onSave={(visit) => {
           addWalkIn(visit);
-          setWalkInForm(false);
+          closeWalkInFlow();
           onAction("Walk-in visit registered");
         }}
         />
-      </Modal>
+        </Modal>
+        {walkInCustomerForm && (
+          <Modal label="Add new customer" onClose={() => setWalkInCustomerForm(false)} wide>
+            <CustomerForm
+              customers={customers}
+              branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+              onCancel={() => setWalkInCustomerForm(false)}
+              onSave={(customer) => {
+                upsertCustomer(customer);
+                setCreatedWalkInCustomer(customer);
+                setWalkInCustomerForm(false);
+                onAction("Customer created");
+              }}
+            />
+          </Modal>
+        )}
+      </>
     );
   if (membershipForm)
     return (
@@ -646,15 +673,19 @@ function DataTable({
 
 function WalkInForm({
   customers,
+  createdCustomer,
   servicePrices,
   branch,
   onBack,
+  onNewProfile,
   onSave,
 }: {
   customers: Array<{ id: string; name: string }>;
+  createdCustomer: Customer | null;
   servicePrices: ServicePrice[];
   branch: string;
   onBack: () => void;
+  onNewProfile: () => void;
   onSave: (visit: WalkIn) => void;
 }) {
   const [existing, setExisting] = useState(true);
@@ -665,6 +696,12 @@ function WalkInForm({
   const [method, setMethod] = useState("Cash");
   const [checkedIn, setCheckedIn] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (!createdCustomer) return;
+    setExisting(true);
+    setName(createdCustomer.name);
+    setError("");
+  }, [createdCustomer]);
   const submit = () => {
     if (!name.trim())
       return setError(
@@ -699,6 +736,7 @@ function WalkInForm({
       title="Register Walk-in"
       subtitle="Registration and attendance are separate actions."
       onBack={onBack}
+      showBack={false}
     >
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="sm:col-span-2">
@@ -711,8 +749,9 @@ function WalkInForm({
               Existing customer
             </button>
             <button
-              onClick={() => setExisting(false)}
-              className={`rounded-lg border px-3 py-2 text-sm ${!existing ? "border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent)]" : "border-[var(--border)]"}`}
+              type="button"
+              onClick={onNewProfile}
+              className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
             >
               New profile
             </button>
@@ -860,6 +899,7 @@ function MembershipForm({
       title="Create Membership"
       subtitle="Link a plan to an existing customer profile."
       onBack={onBack}
+      showBack={false}
     >
       <label className="block">
         <span className="mb-1.5 block text-xs font-medium">Customer</span>
@@ -907,6 +947,7 @@ function MembershipForm({
         </label>
       </div>
       {error && <p className="mt-4 text-xs text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end border-t border-[var(--border)] pt-5">
       <button
         onClick={() => {
           if (!customer.trim())
@@ -934,10 +975,11 @@ function MembershipForm({
             price: selected.price,
           });
         }}
-        className="mt-6 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"
+        className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"
       >
         Confirm membership
       </button>
+      </div>
     </FormShell>
   );
 }
@@ -1160,22 +1202,26 @@ function FormShell({
   title,
   subtitle,
   onBack,
+  showBack = true,
   children,
 }: {
   title: string;
   subtitle: string;
   onBack: () => void;
+  showBack?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-4xl">
-      <button
-        onClick={onBack}
-        className="mb-5 flex items-center gap-2 text-sm text-[var(--text-muted)]"
-      >
-        <ArrowLeft size={16} /> Back
-      </button>
-      <div className="mb-6">
+    <div className="mx-auto w-full max-w-4xl">
+      {showBack && (
+        <button
+          onClick={onBack}
+          className="mb-5 flex items-center gap-2 text-sm text-[var(--text-muted)]"
+        >
+          <ArrowLeft size={16} /> Back
+        </button>
+      )}
+      <div className="mb-5">
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-sm text-[var(--text-muted)]">{subtitle}</p>
       </div>

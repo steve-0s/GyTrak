@@ -15,7 +15,7 @@ import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
 
-type Customer = {
+export type Customer = {
   id: string;
   name: string;
   phone: string;
@@ -627,7 +627,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CustomerForm({
+export function CustomerForm({
   customer,
   customers,
   branch,
@@ -681,12 +681,6 @@ function CustomerForm({
   };
   return (
     <div className="mx-auto max-w-3xl">
-      <button
-        onClick={onCancel}
-        className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)]"
-      >
-        <ArrowLeft size={16} /> Back to customers
-      </button>
       <div className="mb-6">
         <p className="mb-1 text-sm font-medium text-[var(--accent)]">
           Customer record

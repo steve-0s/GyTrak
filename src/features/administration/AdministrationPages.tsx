@@ -449,6 +449,7 @@ function BranchForm({
       title={branch ? "Edit branch" : "Create branch"}
       subtitle="Branch records are mock data for this prototype."
       onBack={onBack}
+      showBack={false}
     >
       <div className="grid gap-5 sm:grid-cols-2">
         <Field
@@ -729,6 +730,7 @@ function AccountForm({
       title={account ? "Edit Front Desk account" : "Create Front Desk account"}
       subtitle="Prototype account management only. No passwords are stored here."
       onBack={onBack}
+      showBack={false}
     >
       <div className="grid gap-5 sm:grid-cols-2">
         <Field
@@ -816,21 +818,25 @@ function FormShell({
   title,
   subtitle,
   onBack,
+  showBack = true,
   children,
 }: {
   title: string;
   subtitle: string;
   onBack: () => void;
+  showBack?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="mx-auto max-w-3xl">
-      <button
-        onClick={onBack}
-        className="mb-5 flex items-center gap-2 text-sm text-[var(--text-muted)]"
-      >
-        <ArrowLeft size={16} /> Back
-      </button>
+      {showBack && (
+        <button
+          onClick={onBack}
+          className="mb-5 flex items-center gap-2 text-sm text-[var(--text-muted)]"
+        >
+          <ArrowLeft size={16} /> Back
+        </button>
+      )}
       <div className="mb-6">
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-sm text-[var(--text-muted)]">{subtitle}</p>
