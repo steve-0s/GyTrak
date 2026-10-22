@@ -57,7 +57,7 @@ import {
   chartData,
   branches as branchRecords,
   mockMetrics,
-} from "../data/mockData";
+} from "../mockdata";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import RoleLayout from "../shared/layouts/RoleLayout";

@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { CalendarDays, Download, Search } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
-import { branchAnalytics } from "../../data/mockData";
+import { branchAnalytics } from "../../mockdata";
 import { useGymData } from "../../contexts/GymDataContext";
 
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };

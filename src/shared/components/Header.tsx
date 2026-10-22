@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CalendarCheck, ChevronDown, CreditCard, LogOut, Menu, Radio, ScanLine, Users, WalletCards, X } from "lucide-react";
 import type { NotificationCategory, NotificationRecord, Role } from "../../types";
-import { mockNotifications } from "../../data/notifications";
+import { mockNotifications } from "../../mockdata";
 import { useGymData } from "../../contexts/GymDataContext";
 
 type Props = { role: Role; accountName?: string; branch?: string; now: Date; visible: boolean; menuOpen: boolean; onToggleMenu: () => void; onRoleSwitch: () => void; onSignOut: () => void; onNavigate: (page: string) => void };

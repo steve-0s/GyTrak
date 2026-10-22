@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { allBranchAnalytics, branchAnalytics } from "../../data/mockData";
+import { allBranchAnalytics, branchAnalytics } from "../../mockdata";
 
 type PeakActivityCardProps = { branch?: keyof typeof branchAnalytics | "All Branches" };
 type Tab = "hours" | "days" | "months";

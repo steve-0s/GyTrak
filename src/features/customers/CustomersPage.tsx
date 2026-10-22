@@ -245,7 +245,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="table-viewport overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-xs">
             <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
               <tr>
@@ -544,7 +544,7 @@ function CustomerDetails({
                 : "No attendance records found"}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="table-viewport overflow-x-auto">
             <table className="w-full min-w-[600px] text-left text-xs">
               <thead className="text-[var(--text-muted)]">
                 <tr>

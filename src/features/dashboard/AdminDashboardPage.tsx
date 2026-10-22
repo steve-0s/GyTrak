@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { branchAnalytics } from "../../data/mockData";
+import { branchAnalytics } from "../../mockdata";
 import PeakActivityCard from "../../components/shared/PeakActivityCard";
 import { useGymData } from "../../contexts/GymDataContext";
 import { membershipDueState } from "../../lib/membership";
