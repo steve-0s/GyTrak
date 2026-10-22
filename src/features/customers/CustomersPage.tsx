@@ -403,16 +403,16 @@ function CustomerDetails({
       >
         <ArrowLeft size={16} /> Back to customers
       </button>
-      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+      <div className="mb-6 flex flex-col gap-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <CustomerAvatar customer={customer} size="lg" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">{customer.name}</h2>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">{customer.id} · {customer.type} · {customer.status}</p>
+          <div className="min-w-0">
+            <h2 className="truncate text-2xl font-bold tracking-tight">{customer.name}</h2>
+            <p className="mt-1 truncate text-xs text-[var(--text-muted)]">{customer.id} · {customer.type} · {customer.status}</p>
             <p className="mt-1 text-sm text-[var(--text-muted)]">Registered {customer.registered} · {customer.branch}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 lg:justify-end">
           <button
             onClick={onEdit}
             className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
@@ -429,115 +429,101 @@ function CustomerDetails({
           </button>
         </div>
       </div>
-      <div className="grid gap-5 xl:grid-cols-[.85fr_1.15fr]">
-        <div className="space-y-5">
-          <InfoSection title="Profile">
-            <div className="flex items-start gap-3">
-              <CustomerAvatar customer={customer} size="md" />
-              <div>
-                <p className="font-semibold">{customer.name}</p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  {customer.phone}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  {customer.email}
-                </p>
-              </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <InfoSection title="Profile">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <Detail label="Phone" value={customer.phone || "Not provided"} />
+            <Detail label="Email" value={customer.email || "Not provided"} />
+            <Detail label="Customer type" value={customer.type} />
+            <Detail label="Branch activity" value={customer.branch} />
+          </div>
+        </InfoSection>
+        <InfoSection title="Membership">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium">
+                {customer.plan ?? "No active membership"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                {customer.endDate
+                  ? `Ends ${customer.endDate}`
+                  : "Walk-in profile"}
+              </p>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
-              <Detail label="Customer type" value={customer.type} />
-              <Detail label="Branch activity" value={customer.branch} />
-            </div>
-          </InfoSection>
-          <InfoSection title="Membership">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">
-                  {customer.plan ?? "No active membership"}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  {customer.endDate
-                    ? `Ends ${customer.endDate}`
-                    : "Walk-in profile"}
-                </p>
-              </div>
-              <span
-                className={`rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[customer.status]}`}
-              >
-                {customer.status}
-              </span>
-            </div>
-            {customer.plan && (
-              <button onClick={() => onAction("Membership reminders opened")} className="mt-3 block text-xs font-semibold text-[var(--accent)]">
+            <span
+              className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[customer.status]}`}
+            >
+              {customer.status}
+            </span>
+          </div>
+          {customer.plan && (
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2">
+              <button onClick={() => onAction("Membership reminders opened")} className="text-xs font-semibold text-[var(--accent)]">
                 Send membership reminder
               </button>
-            )}
-            {customer.plan && (
               <button
                 onClick={() => onAction("Membership details opened")}
-                className="mt-4 flex items-center gap-1 text-xs font-semibold text-[var(--accent)]"
+                className="flex items-center gap-1 text-xs font-semibold text-[var(--accent)]"
               >
-                View membership details <ArrowUpRight size={13} />
+                View details <ArrowUpRight size={13} />
               </button>
-            )}
-          </InfoSection>
-          <InfoSection title="RFID Keyfob">
-            <Detail
-              label="Assigned keyfob"
-              value={customer.keyfob ?? "Not assigned"}
-            />
-            <button
-              onClick={() => onAction("Keyfob assignment opened")}
-              className="mt-3 text-xs font-semibold text-[var(--accent)]"
-            >
-              {customer.keyfob ? "View assignment history" : "Assign keyfob"}
-            </button>
-          </InfoSection>
-        </div>
-        <div className="space-y-5">
-          <InfoSection title="Activity history">
-            <div className="space-y-3 text-xs">
-              <p>
-                <span className="font-medium">Profile created</span>
-                <span className="ml-2 text-[var(--text-muted)]">
-                  {customer.registered}
-                </span>
-              </p>
-              <p>
-                <span className="font-medium">Latest visit recorded</span>
-                <span className="ml-2 text-[var(--text-muted)]">Today</span>
-              </p>
-              {customer.type === "Member" && (
-                <p>
-                  <span className="font-medium">Membership record linked</span>
-                  <span className="ml-2 text-[var(--text-muted)]">System</span>
-                </p>
-              )}
             </div>
-          </InfoSection>
-        </div>
+          )}
+        </InfoSection>
+        <InfoSection title="RFID Keyfob">
+          <Detail
+            label="Assigned keyfob"
+            value={customer.keyfob ?? "Not assigned"}
+          />
+          <button
+            onClick={() => onAction("Keyfob assignment opened")}
+            className="mt-4 text-xs font-semibold text-[var(--accent)]"
+          >
+            {customer.keyfob ? "View assignment history" : "Assign keyfob"}
+          </button>
+        </InfoSection>
+        <InfoSection title="Activity history" className="lg:col-span-3">
+          <div className="grid gap-3 text-xs sm:grid-cols-3">
+            <p className="border-l-2 border-[var(--accent)] pl-3">
+              <span className="block font-medium">Profile created</span>
+              <span className="mt-1 block text-[var(--text-muted)]">{customer.registered}</span>
+            </p>
+            <p className="border-l-2 border-[var(--border)] pl-3">
+              <span className="block font-medium">Latest visit recorded</span>
+              <span className="mt-1 block text-[var(--text-muted)]">Today</span>
+            </p>
+            {customer.type === "Member" && (
+              <p className="border-l-2 border-[var(--border)] pl-3">
+                <span className="block font-medium">Membership record linked</span>
+                <span className="mt-1 block text-[var(--text-muted)]">System</span>
+              </p>
+            )}
+          </div>
+        </InfoSection>
       </div>
       <div className="mt-5">
         <InfoSection title="Visit history">
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--bg)] p-3">
-            <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
-              <span className="text-[var(--text-muted)]">Day</span>
-              <input
-                value={visitDate}
-                onChange={(event) => setVisitDate(event.target.value)}
-                placeholder="e.g. Oct 20, 2026"
-                className="w-32 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
-              />
-            </label>
-            <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
-              <span className="text-[var(--text-muted)]">Time</span>
-              <input
-                value={visitTime}
-                onChange={(event) => setVisitTime(event.target.value)}
-                placeholder="e.g. 09:42 AM"
-                className="w-28 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
-              />
-            </label>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--bg)] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
+                <span className="text-[var(--text-muted)]">Day</span>
+                <input
+                  value={visitDate}
+                  onChange={(event) => setVisitDate(event.target.value)}
+                  placeholder="e.g. Oct 20, 2026"
+                  className="w-32 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
+                />
+              </label>
+              <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
+                <span className="text-[var(--text-muted)]">Time</span>
+                <input
+                  value={visitTime}
+                  onChange={(event) => setVisitTime(event.target.value)}
+                  placeholder="e.g. 09:42 AM"
+                  className="w-28 bg-transparent outline-none placeholder:text-[var(--text-muted)]"
+                />
+              </label>
+            </div>
             <span className="text-xs text-[var(--text-muted)]">
               {visits.length > 0
                 ? `${visits.length} attendance record${visits.length === 1 ? "" : "s"} found`
@@ -545,30 +531,35 @@ function CustomerDetails({
             </span>
           </div>
           <div className="table-viewport overflow-x-auto">
-            <table className="w-full min-w-[600px] text-left text-xs">
+            <table className="w-full min-w-[680px] text-left text-xs">
               <thead className="text-[var(--text-muted)]">
                 <tr>
-                  <th className="pb-3 font-medium">Date</th>
-                  <th className="pb-3 font-medium">Branch</th>
-                  <th className="pb-3 font-medium">Time-in</th>
-                  <th className="pb-3 font-medium">Time-out</th>
-                  <th className="pb-3 font-medium">Source</th>
-                  <th className="pb-3 font-medium">Status</th>
+                  <th className="px-3 pb-3 font-medium">Date</th>
+                  <th className="px-3 pb-3 font-medium">Branch</th>
+                  <th className="px-3 pb-3 font-medium">Time-in</th>
+                  <th className="px-3 pb-3 font-medium">Time-out</th>
+                  <th className="px-3 pb-3 font-medium">Source</th>
+                  <th className="px-3 pb-3 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {visits.map((visit) => (
                   <tr key={visit.id}>
-                    <td className="py-3">{visit.date}</td>
-                    <td className="py-3 text-[var(--text-muted)]">{visit.branch}</td>
-                    <td className="py-3 text-[var(--text-muted)]">{visit.timeIn}</td>
-                    <td className="py-3 text-[var(--text-muted)]">{visit.timeOut}</td>
-                    <td className="py-3">{visit.source}</td>
-                    <td className="py-3">{visit.status}</td>
+                    <td className="px-3 py-3">{visit.date}</td>
+                    <td className="px-3 py-3 text-[var(--text-muted)]">{visit.branch}</td>
+                    <td className="px-3 py-3 text-[var(--text-muted)]">{visit.timeIn}</td>
+                    <td className="px-3 py-3 text-[var(--text-muted)]">{visit.timeOut}</td>
+                    <td className="px-3 py-3">{visit.source}</td>
+                    <td className="px-3 py-3">{visit.status}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {!visits.length && (
+              <div className="border-t border-[var(--border)] px-3 py-8 text-center text-sm text-[var(--text-muted)]">
+                No attendance records match the selected filters.
+              </div>
+            )}
           </div>
         </InfoSection>
       </div>
@@ -606,13 +597,15 @@ function resizePhoto(file: File): Promise<string> {
 
 function InfoSection({
   title,
+  className = "",
   children,
 }: {
   title: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className={`h-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}>
       <h3 className="mb-4 font-semibold">{title}</h3>
       {children}
     </section>
