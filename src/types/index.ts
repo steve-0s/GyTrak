@@ -47,6 +47,7 @@ export type WalkIn = {
   payment: "Paid" | "Pending"
   method: string
   status: "Registered" | "Completed" | "Checked in"
+  serviceName?: string
   attendanceId?: string
   reason?: string
 }

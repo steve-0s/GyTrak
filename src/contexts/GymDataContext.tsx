@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { auditLogs as seedAuditLogs, branches as seedBranches, coaches as seedCoaches, customers as seedCustomers, frontDeskAccounts as seedAccounts, keyfobs as seedKeyfobs, membershipPayments as seedPayments, membershipPlans as seedPlans, memberships as seedMemberships, visitRecords as seedVisits, walkIns as seedWalkIns } from "../mockdata";
+import { auditLogs as seedAuditLogs, branches as seedBranches, coaches as seedCoaches, customers as seedCustomers, frontDeskAccounts as seedAccounts, keyfobs as seedKeyfobs, membershipPayments as seedPayments, membershipPlans as seedPlans, memberships as seedMemberships, reminderRecords as seedReminderRecords, visitRecords as seedVisits, walkIns as seedWalkIns } from "../mockdata";
 import { nextMockId, nowLabel } from "../services/mockApi";
 import { normalizePhone } from "../lib/utils";
 import { addBillingMonths, durationToMonths } from "../lib/membership";
 import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn, ReminderRecord, ReminderSettings } from "../types";
 import { defaultReminderSettings, daysUntil, reminderStage, renderTemplate } from "../lib/reminders";
+import { defaultServicePrices as pricingServicePrices } from "../lib/pricing";
 
 const storageKey = "gytrak-mock-gym-data-v2";
 const branchRecords: BranchRecord[] = seedBranches.map((branch) => ({ ...branch }));
@@ -41,25 +42,10 @@ type GymDataContextValue = GymData & {
   addAuditLog: (entry: AuditLog) => void;
   addReminder: (record: ReminderRecord) => void;
   updateReminderSettings: (settings: ReminderSettings) => void;
+  resetDemoData: () => void;
 };
 
-function readData(): GymData {
-  try {
-    const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as GymData | null;
-    if (stored?.customers && stored.registrations && stored.walkIns && stored.visits) return {
-      ...stored,
-      memberships: stored.memberships ?? seedMemberships.map((item) => ({ ...item })),
-      membershipPlans: stored.membershipPlans ?? seedPlans.map((item) => ({ ...item })),
-      servicePrices: stored.servicePrices ?? defaultServicePrices(),
-      payments: stored.payments ?? seedPayments.map((item) => ({ ...item })),
-      coaches: stored.coaches ?? seedCoaches.map((item) => ({ ...item })),
-      keyfobs: stored.keyfobs ?? seedKeyfobs.map((item) => ({ ...item })),
-      branches: stored.branches ?? branchRecords.map((item) => ({ ...item })),
-      frontDeskAccounts: stored.frontDeskAccounts ?? seedAccounts.map((item, index) => ({ ...item, id: `FDA-${index + 1}` })),
-      auditLogs: stored.auditLogs ?? seedAuditLogs.map((item) => ({ ...item })),
-      reminderRecords: stored.reminderRecords ?? [], reminderSettings: { ...defaultReminderSettings, ...(stored.reminderSettings ?? {}), channels: { ...defaultReminderSettings.channels, ...(stored.reminderSettings?.channels ?? {}) } },
-    };
-  } catch { /* use seed data */ }
+function seedData(): GymData {
   return {
     customers: seedCustomers.map((item) => ({ ...item })),
     registrations: [],
@@ -74,8 +60,39 @@ function readData(): GymData {
     branches: branchRecords.map((item) => ({ ...item })),
     frontDeskAccounts: seedAccounts.map((item, index) => ({ ...item, id: `FDA-${index + 1}` })),
     auditLogs: seedAuditLogs.map((item) => ({ ...item })),
-    reminderRecords: [], reminderSettings: { ...defaultReminderSettings, channels: { ...defaultReminderSettings.channels } },
+    reminderRecords: seedReminderRecords.map((item) => ({ ...item })),
+    reminderSettings: { ...defaultReminderSettings, channels: { ...defaultReminderSettings.channels } },
   };
+}
+
+function mergeSeedRecords<T>(seed: T[], stored: T[], key: (record: T) => string) {
+  const existing = new Set(stored.map(key));
+  return [...stored, ...seed.filter((record) => !existing.has(key(record)))];
+}
+
+function readData(): GymData {
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as GymData | null;
+    if (stored?.customers && stored.registrations && stored.walkIns && stored.visits) return {
+      ...seedData(),
+      ...stored,
+      customers: mergeSeedRecords(seedCustomers as Customer[], stored.customers, (item) => item.id),
+      walkIns: mergeSeedRecords(seedWalkIns as WalkIn[], stored.walkIns, (item) => item.id),
+      visits: mergeSeedRecords(seedVisits as VisitRecord[], stored.visits, (item) => item.id),
+      memberships: mergeSeedRecords(seedMemberships, stored.memberships ?? [], (item) => item.id),
+      membershipPlans: mergeSeedRecords(seedPlans.map((item) => ({ ...item })), stored.membershipPlans ?? [], (item) => item.name),
+      servicePrices: stored.servicePrices ?? defaultServicePrices(),
+      payments: mergeSeedRecords(seedPayments, stored.payments ?? [], (item) => item.id),
+      coaches: mergeSeedRecords(seedCoaches, stored.coaches ?? [], (item) => item.id),
+      keyfobs: mergeSeedRecords(seedKeyfobs, stored.keyfobs ?? [], (item) => item.id),
+      branches: mergeSeedRecords(branchRecords, stored.branches ?? [], (item) => item.id),
+      frontDeskAccounts: mergeSeedRecords(seedData().frontDeskAccounts, stored.frontDeskAccounts ?? [], (item) => item.id),
+      auditLogs: mergeSeedRecords(seedAuditLogs, stored.auditLogs ?? [], (item) => `${item.time}-${item.record}`),
+      reminderRecords: mergeSeedRecords(seedReminderRecords, stored.reminderRecords ?? [], (item) => item.id),
+      reminderSettings: { ...defaultReminderSettings, ...(stored.reminderSettings ?? {}), channels: { ...defaultReminderSettings.channels, ...(stored.reminderSettings?.channels ?? {}) } },
+    };
+  } catch { /* use seed data */ }
+  return seedData();
 }
 
 function branchFor(branchId: string, records: BranchRecord[] = branchRecords) {
@@ -83,11 +100,7 @@ function branchFor(branchId: string, records: BranchRecord[] = branchRecords) {
 }
 
 function defaultServicePrices(): ServicePrice[] {
-  return [
-    { id: "SR-WALKIN", name: "Non-member walk-in", category: "Walk-in access", amount: 250, active: true },
-    { id: "SR-MEMBER-WALKIN", name: "Existing member walk-in", category: "Walk-in access", amount: 0, active: true },
-    { id: "SR-COACHING", name: "Personal coaching session", category: "Coaching", amount: 800, active: true },
-  ];
+  return pricingServicePrices.map((price) => ({ ...price }));
 }
 
 export function GymDataProvider({ children }: { children: ReactNode }) {
@@ -157,16 +170,17 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     const open = data.visits.find((visit) => visit.customerId === customer.id && visit.branch === branch.name && visit.status === "Checked in");
     if (open) return { kind: "duplicate" as const, customer };
     const visit: VisitRecord = { id: nextMockId("ATT", 90300), customerId: customer.id, customer: customer.name, branch: branch.name, date: nowLabel(), timeIn: new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }), timeOut: "—", type: "Walk-in", source: "Manual", status: "Checked in", sync: "Pending" };
-    const price = data.servicePrices.find((item) => item.name === "Non-member walk-in" && item.active)?.amount;
+    const priceConfig = data.servicePrices.find((item) => item.name === "Non-member walk-in" && item.active);
+    const price = priceConfig ? customer.classification === "Student" ? priceConfig.studentAmount ?? priceConfig.amount : priceConfig.amount : undefined;
     if (price === undefined) return { kind: "not-configured" as const };
-    const walkIn: WalkIn = { id: nextMockId("VIS", 20900), customer: customer.name, customerId: customer.id, branch: branch.name, date: nowLabel(), timeIn: visit.timeIn, timeOut: "—", fee: price, payment: "Pending", method: "—", status: "Checked in", attendanceId: visit.id };
+    const walkIn: WalkIn = { id: nextMockId("VIS", 20900), customer: customer.name, customerId: customer.id, branch: branch.name, date: nowLabel(), timeIn: visit.timeIn, timeOut: "—", fee: price, payment: "Pending", method: "—", status: "Checked in", serviceName: "Non-member walk-in", attendanceId: visit.id };
     persist({ ...data, walkIns: [walkIn, ...data.walkIns], visits: [visit, ...data.visits] });
     return { kind: "checked-in" as const, customer, walkIn, visit };
   };
   const recordWalkInPayment = (walkInId: string, method: string) => {
     const walkIn = data.walkIns.find((item) => item.id === walkInId);
     if (!walkIn || walkIn.payment === "Paid") return;
-    const payment: PaymentRecord = { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method, reference: walkIn.id, category: "Walk-in", branch: walkIn.branch, status: "Paid", serviceName: "Walk-in access" };
+    const payment: PaymentRecord = { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method, reference: walkIn.id, category: "Walk-in", branch: walkIn.branch, status: "Paid", serviceName: walkIn.serviceName ?? "Non-member walk-in" };
     persist({ ...data, walkIns: data.walkIns.map((item) => item.id === walkInId ? { ...item, payment: "Paid", method } : item), payments: [payment, ...data.payments] });
   };
   const upsertCustomer = (customer: Customer) => persist({ ...data, customers: data.customers.some((item) => item.id === customer.id) ? data.customers.map((item) => item.id === customer.id ? customer : item) : [customer, ...data.customers] });
@@ -184,7 +198,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   };
   const updateWalkIn = (id: string, update: Partial<WalkIn>) => persist({ ...data, walkIns: data.walkIns.map((item) => item.id === id ? { ...item, ...update } : item) });
   const addWalkIn = (walkIn: WalkIn) => {
-    const payment = walkIn.payment === "Paid" ? { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method: walkIn.method, reference: walkIn.id, category: "Walk-in" as const, branch: walkIn.branch, status: "Paid" as const, serviceName: "Walk-in access" } : undefined;
+    const payment = walkIn.payment === "Paid" ? { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method: walkIn.method, reference: walkIn.id, category: "Walk-in" as const, branch: walkIn.branch, status: "Paid" as const, serviceName: walkIn.serviceName ?? "Non-member walk-in" } : undefined;
     persist({ ...data, walkIns: [walkIn, ...data.walkIns], payments: payment ? [payment, ...data.payments] : data.payments });
   };
   const removeWalkIn = (id: string) => persist({ ...data, walkIns: data.walkIns.filter((item) => item.id !== id) });
@@ -213,6 +227,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   const addAuditLog = (entry: AuditLog) => persist({ ...data, auditLogs: [entry, ...data.auditLogs] });
   const addReminder = (record: ReminderRecord) => { if (data.reminderRecords.some((item) => item.membershipId === record.membershipId && item.stage === record.stage && item.channel === record.channel && item.status !== "Failed")) return; persist({ ...data, reminderRecords: [record, ...data.reminderRecords] }); };
   const updateReminderSettings = (settings: ReminderSettings) => persist({ ...data, reminderSettings: settings });
+  const resetDemoData = () => persist(seedData());
   useEffect(() => {
     if (!data.reminderSettings.enabled) return;
     const additions: ReminderRecord[] = [];
@@ -228,7 +243,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     });
     if (additions.length) { const next = { ...data, reminderRecords: [...additions, ...data.reminderRecords] }; setData(next); localStorage.setItem(storageKey, JSON.stringify(next)); }
   }, [data.memberships, data.customers, data.reminderSettings, data.reminderRecords]);
-  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings }), [data]);
+  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

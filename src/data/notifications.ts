@@ -10,4 +10,18 @@ export const mockNotifications: NotificationRecord[] = [
   { id: "NOTIF-RFID-UNASSIGNED", category: "rfid", title: "RFID keyfob issue", message: "An unassigned keyfob is available for assignment at Makati Central.", timestamp: "Oct 20, 2026 · 08:40 AM", branch: "Makati Central", destination: "RFID Keyfobs" },
   { id: "NOTIF-SYNC-QUEUE", category: "scanner", title: "Scanner synchronization issue", message: "Attendance events are waiting for synchronization at Cebu IT Park.", timestamp: "Oct 20, 2026 · 09:47 AM", branch: "Cebu IT Park", roles: ["Admin", "Front Desk"], destination: "Scanner and Sync Status" },
   { id: "NOTIF-REMINDER-DEMO", category: "reminder", title: "Membership reminder recorded", message: "A simulated membership reminder was recorded for Sofia Kim. No external message was sent.", timestamp: "Oct 20, 2026 · 09:15 AM", branch: "BGC High Street", destination: "Membership Reminders" },
+  ...Array.from({ length: 14 }, (_, index) => {
+    const branch = ["Makati Central", "BGC High Street", "Cebu IT Park"][index % 3];
+    const categories: NotificationRecord["category"][] = ["attendance", "payment", "membership", "rfid", "scanner", "walk-in", "reminder"];
+    const category = categories[index % categories.length];
+    return {
+      id: `NOTIF-DEMO-${String(index + 1).padStart(3, "0")}`,
+      category,
+      title: category === "attendance" ? "Attendance event synced" : category === "payment" ? "Payment activity recorded" : category === "membership" ? "Membership status updated" : category === "rfid" ? "Keyfob activity recorded" : category === "scanner" ? "Scanner queue updated" : category === "walk-in" ? "Walk-in activity recorded" : "Reminder activity updated",
+      message: `Development activity sample ${index + 1} for ${branch}.`,
+      timestamp: `Oct ${String(19 - (index % 5)).padStart(2, "0")}, 2026 · ${String(8 + (index % 4)).padStart(2, "0")}:15 AM`,
+      branch,
+      destination: category === "attendance" ? "Attendance" : category === "rfid" ? "RFID Keyfobs" : category === "scanner" ? "Scanner and Sync Status" : category === "reminder" ? "Membership Reminders" : "Dashboard",
+    };
+  }),
 ];

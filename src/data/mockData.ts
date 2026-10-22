@@ -1,5 +1,6 @@
 export type { Role } from "../types"
 import { membershipDueState } from "../lib/membership"
+import { gymPricing } from "../lib/pricing"
 
 export const branches = [
   { id: "makati-central", name: "Makati Central", location: "Makati City, Metro Manila", status: "Active", customers: 684, memberships: 512, visits: 348, revenue: 84240, frontDesk: 4 },
@@ -9,12 +10,14 @@ export const branches = [
 ] as const
 
 export const customers = [
-  { id: "CUS-10482", name: "Maya Santos", phone: "+63 917 555 0142", email: "maya.santos@email.com", type: "Member", status: "Active", branch: "Makati Central", registered: "Jan 12, 2026", lastVisit: "Today, 09:42 AM", plan: "Annual Membership", endDate: "Jan 12, 2027", keyfob: "RF-00841" },
-  { id: "CUS-10477", name: "Ava Rivera", phone: "+63 917 555 0188", email: "ava.rivera@email.com", type: "Member", status: "Active", branch: "BGC High Street", registered: "Jan 09, 2026", lastVisit: "Today, 09:18 AM", plan: "Quarterly Membership", endDate: "Dec 18, 2026", keyfob: "RF-00796" },
-  { id: "CUS-10462", name: "Luis Moreno", phone: "+63 917 555 0114", email: "luis.moreno@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 20, 2026", lastVisit: "Today, 09:31 AM" },
-  { id: "CUS-10441", name: "Noah Patel", phone: "+63 917 555 0139", email: "noah.patel@email.com", type: "Member", status: "Expired", branch: "Cebu IT Park", registered: "Jun 02, 2025", lastVisit: "Today, 08:56 AM", plan: "Monthly Membership", endDate: "Oct 12, 2026" },
-  { id: "CUS-10424", name: "Sofia Kim", phone: "+63 917 555 0193", email: "sofia.kim@email.com", type: "Member", status: "Pending", branch: "BGC High Street", registered: "Oct 19, 2026", lastVisit: "Today, 08:44 AM", plan: "Monthly Membership", endDate: "Oct 26, 2026" },
-  { id: "CUS-10398", name: "Rina Velasco", phone: "+63 917 555 0160", email: "rina.velasco@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 18, 2026", lastVisit: "Yesterday, 06:20 PM" },
+  { id: "CUS-10482", name: "Maya Santos", phone: "+63 917 555 0142", email: "maya.santos@email.com", type: "Member", status: "Active", branch: "Makati Central", registered: "Jan 12, 2026", lastVisit: "Today, 09:42 AM", classification: "Regular", plan: "Monthly Membership with Coaching", endDate: "Nov 12, 2026", keyfob: "RF-00841" },
+  { id: "CUS-10477", name: "Ava Rivera", phone: "+63 917 555 0188", email: "ava.rivera@email.com", type: "Member", status: "Active", branch: "BGC High Street", registered: "Jan 09, 2026", lastVisit: "Today, 09:18 AM", classification: "Student", plan: "Monthly Membership", endDate: "Nov 18, 2026", keyfob: "RF-00796" },
+  { id: "CUS-10462", name: "Luis Moreno", phone: "+63 917 555 0114", email: "luis.moreno@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 20, 2026", lastVisit: "Today, 09:31 AM", classification: "Regular" },
+  { id: "CUS-10441", name: "Noah Patel", phone: "+63 917 555 0139", email: "noah.patel@email.com", type: "Member", status: "Expired", branch: "Cebu IT Park", registered: "Jun 02, 2025", lastVisit: "Today, 08:56 AM", classification: "Student", plan: "Monthly Membership with Coaching", endDate: "Oct 12, 2026" },
+  { id: "CUS-10424", name: "Sofia Kim", phone: "+63 917 555 0193", email: "sofia.kim@email.com", type: "Member", status: "Pending", branch: "BGC High Street", registered: "Oct 19, 2026", lastVisit: "Today, 08:44 AM", classification: "Student", plan: "Monthly Membership", endDate: "Oct 26, 2026" },
+  { id: "CUS-10398", name: "Rina Velasco", phone: "+63 917 555 0160", email: "rina.velasco@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 18, 2026", lastVisit: "Yesterday, 06:20 PM", classification: "Regular" },
+  { id: "CUS-10344", name: "Owen Cruz", phone: "+63 917 555 0174", email: "owen.cruz@email.com", type: "Walk-in", status: "None", branch: "BGC High Street", registered: "Oct 11, 2026", lastVisit: "Oct 19, 2026", classification: "Student" },
+  { id: "CUS-10311", name: "Jamie Lim", phone: "+63 917 555 0155", email: "jamie.lim@email.com", type: "Walk-in", status: "None", branch: "Makati Central", registered: "Oct 08, 2026", lastVisit: "Oct 18, 2026", classification: "Regular" },
 ] as const
 
 export const keyfobs = [
@@ -25,10 +28,10 @@ export const keyfobs = [
 ] as const
 
 export const walkIns = [
-  { id: "VIS-20841", customer: "Luis Moreno", customerId: "CUS-10462", branch: "Makati Central", date: "Oct 20, 2026", timeIn: "09:31 AM", timeOut: "—", fee: 250, payment: "Paid", method: "Cash", status: "Checked in", attendanceId: "ATT-90217" },
-  { id: "VIS-20840", customer: "Rina Velasco", customerId: "CUS-10398", branch: "Makati Central", date: "Oct 20, 2026", timeIn: "Not checked in", timeOut: "—", fee: 250, payment: "Pending", method: "—", status: "Registered" },
-  { id: "VIS-20812", customer: "Owen Cruz", customerId: "CUS-10344", branch: "BGC High Street", date: "Oct 19, 2026", timeIn: "07:26 AM", timeOut: "08:58 AM", fee: 200, payment: "Paid", method: "GCash", status: "Completed" },
-  { id: "VIS-20798", customer: "Jamie Lim", customerId: "CUS-10311", branch: "Makati Central", date: "Oct 18, 2026", timeIn: "06:20 PM", timeOut: "07:45 PM", fee: 250, payment: "Paid", method: "Cash", status: "Completed" },
+  { id: "VIS-20841", customer: "Luis Moreno", customerId: "CUS-10462", branch: "Makati Central", date: "Oct 20, 2026", timeIn: "09:31 AM", timeOut: "—", fee: gymPricing.walkIn.regular, payment: "Paid", method: "Cash", status: "Checked in", serviceName: "Non-member walk-in", attendanceId: "ATT-90217" },
+  { id: "VIS-20840", customer: "Rina Velasco", customerId: "CUS-10398", branch: "Makati Central", date: "Oct 20, 2026", timeIn: "Not checked in", timeOut: "—", fee: gymPricing.walkIn.regular, payment: "Pending", method: "—", status: "Registered", serviceName: "Non-member walk-in" },
+  { id: "VIS-20812", customer: "Owen Cruz", customerId: "CUS-10344", branch: "BGC High Street", date: "Oct 19, 2026", timeIn: "07:26 AM", timeOut: "08:58 AM", fee: gymPricing.walkInWithCoach.student, payment: "Paid", method: "GCash", status: "Completed", serviceName: "Walk-in with coach (1 hour)" },
+  { id: "VIS-20798", customer: "Jamie Lim", customerId: "CUS-10311", branch: "Makati Central", date: "Oct 18, 2026", timeIn: "06:20 PM", timeOut: "07:45 PM", fee: gymPricing.walkIn.regular, payment: "Paid", method: "Cash", status: "Completed", serviceName: "Non-member walk-in" },
 ] as const
 
 // The authoritative record of actual gym visits. Walk-in transactions remain
@@ -45,16 +48,16 @@ export const visitRecords = [
 ] as const
 
 export const memberships = [
-  { id: "MEM-00814", customer: "Maya Santos", customerId: "CUS-10482", plan: "Annual Membership", start: "Jan 12, 2026", end: "Jan 12, 2027", status: "Active", payment: "Paid", branch: "Makati Central", price: 12000 },
-  { id: "MEM-00809", customer: "Ava Rivera", customerId: "CUS-10477", plan: "Quarterly Membership", start: "Sep 18, 2026", end: "Dec 18, 2026", status: "Active", payment: "Paid", branch: "BGC High Street", price: 4200 },
-  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Sep 26, 2026", end: "Oct 26, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: 1800 },
-  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Pending", branch: "Cebu IT Park", price: 1800 },
+  { id: "MEM-00814", customer: "Maya Santos", customerId: "CUS-10482", plan: "Monthly Membership with Coaching", start: "Oct 12, 2026", end: "Nov 12, 2026", status: "Active", payment: "Paid", branch: "Makati Central", price: gymPricing.monthlyWithCoach.regular },
+  { id: "MEM-00809", customer: "Ava Rivera", customerId: "CUS-10477", plan: "Monthly Membership", start: "Oct 18, 2026", end: "Nov 18, 2026", status: "Active", payment: "Paid", branch: "BGC High Street", price: gymPricing.monthly.student },
+  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Sep 26, 2026", end: "Oct 26, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: gymPricing.monthly.student },
+  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership with Coaching", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Pending", branch: "Cebu IT Park", price: gymPricing.monthlyWithCoach.student },
 ] as const
 
 export const membershipPayments = [
-  { id: "PAY-001", membershipId: "MEM-00814", date: "Jan 12, 2026", amount: 12000, method: "GCash", reference: "GC-120126" },
-  { id: "PAY-002", membershipId: "MEM-00809", date: "Sep 18, 2026", amount: 4200, method: "Cash", reference: "Receipt-8841" },
-  { id: "PAY-003", membershipId: "MEM-00794", date: "Sep 12, 2026", amount: 1800, method: "Card", reference: "POS-7712" },
+  { id: "PAY-001", membershipId: "MEM-00814", date: "Oct 12, 2026", amount: gymPricing.monthlyWithCoach.regular, method: "GCash", reference: "GC-101226", category: "Membership", branch: "Makati Central", status: "Paid", serviceName: "Monthly Membership with Coaching" },
+  { id: "PAY-002", membershipId: "MEM-00809", date: "Oct 18, 2026", amount: gymPricing.monthly.student, method: "Cash", reference: "Receipt-8841", category: "Membership", branch: "BGC High Street", status: "Paid", serviceName: "Monthly Membership" },
+  { id: "PAY-003", membershipId: "MEM-00794", date: "Sep 12, 2026", amount: gymPricing.monthlyWithCoach.student, method: "Card", reference: "POS-7712", category: "Membership", branch: "Cebu IT Park", status: "Pending", serviceName: "Monthly Membership with Coaching" },
 ] as const
 
 export const membershipDueNotifications = memberships
@@ -68,9 +71,8 @@ export const membershipDueNotifications = memberships
   .filter((notification) => notification.key !== "upcoming")
 
 export const membershipPlans = [
-  { name: "Monthly Membership", duration: "1 month", price: 1800, active: true, used: 84 },
-  { name: "Quarterly Membership", duration: "3 months", price: 4200, active: true, used: 62 },
-  { name: "Annual Membership", duration: "12 months", price: 12000, active: true, used: 116 },
+  { name: "Monthly Membership", duration: "1 month", price: gymPricing.monthly.regular, studentPrice: gymPricing.monthly.student, active: true, used: 84 },
+  { name: "Monthly Membership with Coaching", duration: "1 month", price: gymPricing.monthlyWithCoach.regular, studentPrice: gymPricing.monthlyWithCoach.student, active: true, used: 32 },
 ] as const
 
 export const coaches = [

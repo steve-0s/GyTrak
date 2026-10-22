@@ -37,7 +37,7 @@ function readSettings(role: "Admin" | "Front Desk", accountId?: string): Display
 export default function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: Props) {
   const { role } = useAuth();
   const isAdmin = role === "Admin";
-  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings } = useGymData();
+  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings, resetDemoData } = useGymData();
   const [initialSettings] = useState(() => readSettings(role, account?.id));
   const [name, setName] = useState(initialSettings.name);
   const [currency, setCurrency] = useState(initialSettings.currency);
@@ -167,6 +167,10 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
                 {servicePrices.map((price) => <PriceRow key={price.id} price={price} onSave={savePrice} onToggle={() => upsertServicePrice({ ...price, active: !price.active })} />)}
               </div>
               <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4"><label className="min-w-[220px] flex-1"><span className="mb-1 block text-xs text-[var(--text-muted)]">New optional service</span><input value={newServiceName} onChange={(event) => setNewServiceName(event.target.value)} placeholder="e.g. Day pass" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Price (₱)</span><input type="number" min="0" step="0.01" value={newServiceAmount} onChange={(event) => setNewServiceAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={addServicePrice} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--on-accent)]">Add service</button></div>
+            </Panel>
+            <Panel title="Development data">
+              <p className="text-xs leading-relaxed text-[var(--text-muted)]">Restore the complete fictional Philippine gym dataset for demonstrations. This removes locally created demo records from the current browser only.</p>
+              <button type="button" onClick={() => { if (window.confirm("Reset all GyTrak demo data in this browser? Locally created records will be removed.")) { resetDemoData(); onAction("Demo data reset"); } }} className="mt-4 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700">Reset demo data</button>
             </Panel>
             <Panel title="Account email">
               <p className="mb-4 text-xs text-[var(--text-muted)]">Current account: {account?.email ?? "—"}. Email changes require verification in production.</p>

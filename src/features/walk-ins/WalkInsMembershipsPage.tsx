@@ -14,6 +14,7 @@ import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, ServicePrice } from "../../types";
 import { CustomerForm, type Customer } from "../customers/CustomersPage";
+import { priceForCustomer, membershipPrice } from "../../lib/pricing";
 
 type WalkIn = {
   id: string;
@@ -27,6 +28,7 @@ type WalkIn = {
   payment: "Paid" | "Pending";
   method: string;
   status: "Registered" | "Completed" | "Checked in";
+  serviceName?: string;
 };
 type Membership = SharedMembership;
 type Plan = SharedMembershipPlan;
@@ -680,7 +682,7 @@ function WalkInForm({
   onNewProfile,
   onSave,
 }: {
-  customers: Array<{ id: string; name: string }>;
+  customers: Array<{ id: string; name: string; classification?: Customer["classification"] }>;
   createdCustomer: Customer | null;
   servicePrices: ServicePrice[];
   branch: string;
@@ -690,7 +692,7 @@ function WalkInForm({
 }) {
   const [existing, setExisting] = useState(true);
   const [name, setName] = useState("");
-  const [fee, setFee] = useState(() => String(servicePrices.find((item) => item.name === "Non-member walk-in" && item.active)?.amount ?? ""));
+  const [fee, setFee] = useState("");
   const [service, setService] = useState("Non-member walk-in");
   const [payment, setPayment] = useState<"Paid" | "Pending">("Paid");
   const [method, setMethod] = useState("Cash");
@@ -702,6 +704,11 @@ function WalkInForm({
     setName(createdCustomer.name);
     setError("");
   }, [createdCustomer]);
+  const selectedCustomer = customers.find((customer) => customer.name.toLowerCase() === name.trim().toLowerCase() || customer.id.toLowerCase() === name.trim().toLowerCase());
+  const selectedService = servicePrices.find((item) => item.name === service && item.active);
+  useEffect(() => {
+    if (selectedService) setFee(String(selectedCustomer ? priceForCustomer(selectedService, selectedCustomer.classification) : selectedService.amount));
+  }, [selectedCustomer, selectedService]);
   const submit = () => {
     if (!name.trim())
       return setError(
@@ -726,6 +733,7 @@ function WalkInForm({
       timeIn: checkedIn ? "Now" : "Not checked in",
       timeOut: "—",
       fee: parsedFee,
+      serviceName: service,
       payment,
       method: payment === "Paid" ? method : "—",
       status: checkedIn ? "Checked in" : "Registered",
@@ -882,7 +890,7 @@ function MembershipForm({
   onBack,
   onSave,
 }: {
-  customers: Array<{ id: string; name: string }>;
+  customers: Array<{ id: string; name: string; classification?: Customer["classification"] }>;
   plans: Plan[];
   branch: string;
   onBack: () => void;
@@ -891,6 +899,8 @@ function MembershipForm({
   const [customer, setCustomer] = useState("");
   const [plan, setPlan] = useState(plans[0].name);
   const selected = plans.find((item) => item.name === plan) ?? plans[0];
+  const matchedCustomer = customers.find((item) => item.name.toLowerCase() === customer.trim().toLowerCase() || item.id.toLowerCase() === customer.trim().toLowerCase());
+  const selectedPrice = selected ? membershipPrice(selected, matchedCustomer?.classification) : 0;
   const [payment, setPayment] = useState<"Paid" | "Pending">("Pending");
   const [method, setMethod] = useState("Cash");
   const [error, setError] = useState("");
@@ -928,7 +938,7 @@ function MembershipForm({
           </select>
         </label>
         <label className="block"><span className="mb-1.5 block text-xs font-medium">Payment method</span><select value={method} onChange={(event) => setMethod(event.target.value)} disabled={payment === "Pending"} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select></label>
-        <Info label="Plan price" value={php(selected.price)} />
+        <Info label="Plan price" value={php(selectedPrice)} />
         <Info label="Branch" value={branch} />
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium">
@@ -972,7 +982,7 @@ function MembershipForm({
             payment,
             paymentMethod: payment === "Paid" ? method : undefined,
             branch,
-            price: selected.price,
+            price: selectedPrice,
           });
         }}
         className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"

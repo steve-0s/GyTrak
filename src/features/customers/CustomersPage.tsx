@@ -25,6 +25,7 @@ export type Customer = {
   branch: string;
   registered: string;
   lastVisit: string;
+  classification?: "Regular" | "Student";
   plan?: string;
   endDate?: string;
   keyfob?: string;
@@ -67,7 +68,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
   const pendingRegistrations = registrations.filter((item) => ["Pending", "Needs correction"].includes(item.status) && (isAdmin || item.branch === assignedBranch));
   useEffect(() => {
     if (!openCreateSignal) return;
-    setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: branch === "All branches" ? assignedBranch : branch, registered: "Today", lastVisit: "—" });
+    setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: branch === "All branches" ? assignedBranch : branch, registered: "Today", lastVisit: "—", classification: "Regular" });
   }, [openCreateSignal]);
 
   if (editing)
@@ -644,6 +645,7 @@ export function CustomerForm({
       branch,
       registered: "Today",
       lastVisit: "—",
+      classification: "Regular",
     },
   );
   const [error, setError] = useState("");
@@ -737,6 +739,19 @@ export function CustomerForm({
             >
               <option>Walk-in</option>
               <option>Member</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium">
+              Pricing category
+            </span>
+            <select
+              value={form.classification ?? "Regular"}
+              onChange={(event) => update("classification", event.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+            >
+              <option>Regular</option>
+              <option>Student</option>
             </select>
           </label>
         </div>
