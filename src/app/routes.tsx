@@ -10,7 +10,6 @@ export const appRoutes: RouteMeta[] = [
   { label: "Walk-ins & Memberships", path: "/walk-ins-memberships", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "CreditCard" },
   { label: "Membership Reminders", path: "/membership-reminders", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Bell" },
   { label: "Coaches", path: "/coaches", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Dumbbell" },
-  { label: "Attendance", path: "/attendance", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "CalendarCheck" },
   { label: "RFID Keyfobs", path: "/rfid-keyfobs", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Radio" },
   { label: "Scanner and Sync Status", path: "/scanner-sync", roles: ["Front Desk"], branchScope: "assigned", group: "Monitoring", icon: "ScanLine" },
   { label: "Reports", path: "/reports", roles: ["Admin"], branchScope: "all", group: "Business", icon: "ChartNoAxesCombined" },
@@ -25,6 +24,7 @@ export const appRoutes: RouteMeta[] = [
 export const pagePaths = Object.fromEntries(appRoutes.map((route) => [route.label, route.path])) as Record<string, string>;
 
 export function activePageFromPath(pathname: string) {
+  if (pathname === "/attendance") return "Walk-ins & Memberships";
   return Object.entries(pagePaths).find(([, path]) => path === pathname)?.[0] ?? "Dashboard";
 }
 

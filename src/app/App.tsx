@@ -38,7 +38,6 @@ import AdminDashboardPage from "../roles/admin/screens/DashboardScreen";
 import FrontDeskDashboardPage from "../roles/front-desk/screens/DashboardScreen";
 import CustomersPage from "../roles/front-desk/screens/CustomersScreen";
 import WalkInsMembershipsPage from "../roles/front-desk/screens/WalkInsScreen";
-import AttendancePage from "../roles/front-desk/screens/AttendanceScreen";
 import RFIDKeyfobsPage from "../roles/front-desk/screens/RFIDScreen";
 import ScannerSyncPage from "../roles/front-desk/screens/ScannerSyncScreen";
 import BranchesScreen from "../roles/admin/screens/BranchesScreen";
@@ -93,6 +92,7 @@ function App() {
   const [headerVisible, setHeaderVisible] = useState(true);
   const [customerCreateSignal, setCustomerCreateSignal] = useState(0);
   const [walkInCreateSignal, setWalkInCreateSignal] = useState(0);
+  const [attendanceSignal, setAttendanceSignal] = useState(0);
   const [openCustomerId, setOpenCustomerId] = useState<string | null>(null);
   const navGroups = getNavigationGroups(role, account?.branch);
   const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
@@ -136,10 +136,10 @@ function App() {
     const destinations: Array<[string, string]> = [
       ["New customer form opened", "Customers"],
       ["Customers opened", "Customers"],
-      ["Attendance records opened", "Attendance"],
-      ["Attendance correction opened", "Attendance"],
-      ["Manual attendance form opened", "Attendance"],
-      ["Complete attendance page opened", "Attendance"],
+      ["Attendance records opened", "Walk-ins & Memberships"],
+      ["Attendance correction opened", "Walk-ins & Memberships"],
+      ["Manual attendance form opened", "Walk-ins & Memberships"],
+      ["Complete attendance page opened", "Walk-ins & Memberships"],
       ["Scanner status opened", "Scanner and Sync Status"],
       ["Detailed sync status opened", "Scanner and Sync Status"],
       ["Walk-in registration opened", "Walk-ins & Memberships"],
@@ -154,7 +154,8 @@ function App() {
     ];
     if (message === "New customer form opened") setCustomerCreateSignal((value) => value + 1);
     if (message === "Walk-in registration opened") setWalkInCreateSignal((value) => value + 1);
-    if (message.endsWith(" attendance details opened")) selectPage("Attendance");
+    if (["Attendance records opened", "Attendance correction opened", "Manual attendance form opened", "Complete attendance page opened"].includes(message)) setAttendanceSignal((value) => value + 1);
+    if (message.endsWith(" attendance details opened")) { setAttendanceSignal((value) => value + 1); selectPage("Walk-ins & Memberships"); }
     if (message.endsWith(" payment follow-up opened")) selectPage("Walk-ins & Memberships");
     if (message.endsWith(" details opened")) selectPage("Branches");
     if (message === "Memberships expiring soon opened") selectPage("Walk-ins & Memberships");
@@ -333,13 +334,14 @@ function App() {
               isAdmin={isAdmin}
               branch={account?.branch}
               onAction={handleAction}
-              initialView="walkins"
+              onOpenCustomer={(customerId) => { setOpenCustomerId(customerId); selectPage("Customers"); }}
+              initialView="overview"
               openWalkInSignal={walkInCreateSignal}
+              openAttendanceSignal={attendanceSignal}
+              onAttendanceSignalConsumed={() => setAttendanceSignal(0)}
             />
           ) : currentPage === "Membership Reminders" ? (
             <MembershipRemindersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
-          ) : currentPage === "Attendance" ? (
-            <AttendancePage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} onOpenCustomer={(customerId) => { setOpenCustomerId(customerId); selectPage("Customers"); }} />
           ) : currentPage === "RFID Keyfobs" ? (
             <RFIDKeyfobsPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Scanner and Sync Status" ? (

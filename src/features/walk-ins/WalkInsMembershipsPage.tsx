@@ -10,11 +10,14 @@ import {
 import { formatPHP as php } from "../../lib/utils";
 import { addBillingMonths, durationToMonths, membershipDueState } from "../../lib/membership";
 import Modal from "../../components/shared/Modal";
+import FilterSelect from "../../components/shared/FilterSelect";
+import ManualAttendanceModal from "../../components/modals/ManualAttendanceModal";
 import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
-import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, ServicePrice } from "../../types";
+import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, PaymentRecord, ServicePrice, VisitRecord } from "../../types";
 import { CustomerForm, type Customer } from "../customers/CustomersPage";
 import { priceForCustomer, membershipPrice } from "../../lib/pricing";
+import AttendancePage from "../attendance/AttendancePage";
 
 type WalkIn = {
   id: string;
@@ -36,8 +39,11 @@ type Props = {
   isAdmin: boolean;
   branch?: string;
   onAction: (message: string) => void;
-  initialView?: "walkins" | "memberships";
+  onOpenCustomer?: (customerId: string) => void;
+  initialView?: "overview" | "walkins" | "memberships" | "attendance";
   openWalkInSignal?: number;
+  openAttendanceSignal?: number;
+  onAttendanceSignalConsumed?: () => void;
 };
 
 const badge = (value: string) =>
@@ -53,20 +59,25 @@ export default function WalkInsMembershipsPage({
   isAdmin,
   branch: assignedBranch = "Makati Central",
   onAction,
-  initialView = "walkins",
+  onOpenCustomer,
+  initialView = "overview",
   openWalkInSignal = 0,
+  openAttendanceSignal = 0,
+  onAttendanceSignalConsumed,
 }: Props) {
-  const { customers, walkIns, memberships, membershipPlans: plans, servicePrices, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordWalkInPayment, recordMembershipPayment, upsertCustomer } = useGymData();
-  const [view, setView] = useState<"walkins" | "memberships" | "plans">(
+  const { customers, walkIns, visits, memberships, membershipPlans: plans, servicePrices, payments, branches, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordWalkInPayment, recordMembershipPayment, recordManualAttendance, upsertCustomer } = useGymData();
+  const [view, setView] = useState<"overview" | "walkins" | "memberships" | "plans" | "attendance">(
     initialView,
   );
   const [selectedWalkIn, setSelectedWalkIn] = useState<WalkIn | null>(null);
   const [selectedMembership, setSelectedMembership] =
     useState<Membership | null>(null);
+  const [initialAttendanceVisitId, setInitialAttendanceVisitId] = useState<string>();
   const [walkInForm, setWalkInForm] = useState(false);
   const [walkInCustomerForm, setWalkInCustomerForm] = useState(false);
   const [createdWalkInCustomer, setCreatedWalkInCustomer] = useState<Customer | null>(null);
   const [membershipForm, setMembershipForm] = useState(false);
+  const [manualAttendanceForm, setManualAttendanceForm] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : assignedBranch);
@@ -78,6 +89,12 @@ export default function WalkInsMembershipsPage({
   useEffect(() => {
     if (openWalkInSignal) setWalkInForm(true);
   }, [openWalkInSignal]);
+  useEffect(() => {
+    if (openAttendanceSignal) {
+      setView("attendance");
+      onAttendanceSignalConsumed?.();
+    }
+  }, [openAttendanceSignal, onAttendanceSignalConsumed]);
   const scopedWalkIns = walkIns.filter(
     (item) => scopedBranch === "All branches" || item.branch === scopedBranch,
   );
@@ -138,60 +155,17 @@ export default function WalkInsMembershipsPage({
         onAction={onAction}
       />
     );
-  if (walkInForm)
+  if (view === "attendance")
     return (
-      <>
-        <Modal label="Register walk-in" onClose={closeWalkInFlow} wide>
-          <WalkInForm
-        customers={customers}
-        createdCustomer={createdWalkInCustomer}
-        servicePrices={servicePrices}
-        branch={
-          scopedBranch === "All branches" ? "Makati Central" : scopedBranch
-        }
-        onBack={closeWalkInFlow}
-        onNewProfile={() => setWalkInCustomerForm(true)}
-        onSave={(visit) => {
-          addWalkIn(visit);
-          closeWalkInFlow();
-          onAction("Walk-in visit registered");
-        }}
-        />
-        </Modal>
-        {walkInCustomerForm && (
-          <Modal label="Add new customer" onClose={() => setWalkInCustomerForm(false)} wide>
-            <CustomerForm
-              customers={customers}
-              branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
-              onCancel={() => setWalkInCustomerForm(false)}
-              onSave={(customer) => {
-                upsertCustomer(customer);
-                setCreatedWalkInCustomer(customer);
-                setWalkInCustomerForm(false);
-                onAction("Customer created");
-              }}
-            />
-          </Modal>
-        )}
-      </>
-    );
-  if (membershipForm)
-    return (
-      <Modal label="Create membership" onClose={() => setMembershipForm(false)} wide>
-        <MembershipForm
-        customers={customers}
-        plans={plans}
-        branch={
-          scopedBranch === "All branches" ? "Makati Central" : scopedBranch
-        }
-        onBack={() => setMembershipForm(false)}
-        onSave={(membership) => {
-          createMembership(membership);
-          setMembershipForm(false);
-          onAction("Membership created");
-        }}
-        />
-      </Modal>
+      <AttendancePage
+        isAdmin={isAdmin}
+        branch={assignedBranch}
+        onAction={onAction}
+        onOpenCustomer={onOpenCustomer}
+        initialVisitId={initialAttendanceVisitId}
+        onInitialVisitHandled={() => setInitialAttendanceVisitId(undefined)}
+        beforeContent={<UnifiedTabs view={view} onChange={setView} />}
+      />
     );
 
   if (view === "plans")
@@ -212,11 +186,11 @@ export default function WalkInsMembershipsPage({
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             {scopedBranch}
           </p>
-          <h2 className="text-2xl font-bold tracking-tight">
-            {view === "walkins" ? "Walk-ins" : "Memberships"}
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">{view === "overview" ? "Visits & Memberships" : view === "walkins" ? "Walk-ins" : "Memberships"}</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            {view === "walkins"
+            {view === "overview"
+              ? "One workspace for customer visits, attendance, payments, and memberships."
+              : view === "walkins"
               ? "Manage visits, payments, and existing customer profiles."
               : "Track active plans, renewals, and membership status."}
           </p>
@@ -232,50 +206,36 @@ export default function WalkInsMembershipsPage({
           )}
           <button
             onClick={() =>
-              view === "walkins" ? setWalkInForm(true) : setMembershipForm(true)
+              view === "overview"
+                ? setManualAttendanceForm(true)
+                : view === "memberships"
+                  ? setMembershipForm(true)
+                  : setWalkInForm(true)
             }
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]"
           >
             <Plus size={16} />{" "}
-            {view === "walkins" ? "Register Walk-in" : "Create Membership"}
+            {view === "overview"
+              ? "Manual attendance"
+              : view === "memberships"
+                ? "Create Membership"
+                : "Register Walk-in"}
           </button>
         </div>
       </div>
-      <div className="mb-5 flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-sm sm:w-fit">
-        <button
-          onClick={() => {
-            setView("walkins");
-            setQuery("");
-            setStatus("All statuses");
-          }}
-          className={`rounded-md px-4 py-2 ${view === "walkins" ? "bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "text-[var(--text-muted)]"}`}
-        >
-          Walk-ins
-        </button>
-        <button
-          onClick={() => {
-            setView("memberships");
-            setQuery("");
-            setStatus("All statuses");
-          }}
-          className={`rounded-md px-4 py-2 ${view === "memberships" ? "bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "text-[var(--text-muted)]"}`}
-        >
-          Memberships
-        </button>
-      </div>
-      {isAdmin && (
-        <div className="mb-5 flex items-center gap-2">
-          <span className="text-xs text-[var(--text-muted)]">Branch</span>
-          <select value={scopedBranch} onChange={(event) => setScopedBranch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
-            <option>All branches</option>
-            <option>Makati Central</option>
-            <option>BGC High Street</option>
-            <option>Cebu IT Park</option>
-            <option>Quezon Avenue</option>
-          </select>
-        </div>
-      )}
-      {view === "walkins" ? (
+      <UnifiedTabs view={view} onChange={setView} />
+      {view === "overview" ? (
+        <UnifiedOverview
+          visits={visits.filter((item) => scopedBranch === "All branches" || item.branch === scopedBranch)}
+          walkIns={scopedWalkIns}
+          memberships={scopedMemberships}
+          payments={payments}
+          branch={isAdmin ? scopedBranch : undefined}
+          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          onBranchChange={isAdmin ? setScopedBranch : undefined}
+          onSelectVisit={(visit) => { setInitialAttendanceVisitId(visit.id); setView("attendance"); }}
+        />
+      ) : view === "walkins" ? (
         <WalkInList
           customers={customers}
           rows={filteredWalkIns}
@@ -284,6 +244,9 @@ export default function WalkInsMembershipsPage({
           setQuery={setQuery}
           status={status}
           setStatus={setStatus}
+          branch={isAdmin ? scopedBranch : undefined}
+          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          onBranchChange={isAdmin ? setScopedBranch : undefined}
           onSelect={setSelectedWalkIn}
           onDelete={(row) => {
             if (window.confirm(`Delete walk-in ${row.id}?`)) {
@@ -300,6 +263,9 @@ export default function WalkInsMembershipsPage({
           setQuery={setQuery}
           status={status}
           setStatus={setStatus}
+          branch={isAdmin ? scopedBranch : undefined}
+          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          onBranchChange={isAdmin ? setScopedBranch : undefined}
           onSelect={setSelectedMembership}
           onDelete={(row) => {
             if (window.confirm(`Delete membership ${row.id}?`)) {
@@ -309,6 +275,200 @@ export default function WalkInsMembershipsPage({
           }}
         />
       )}
+      {manualAttendanceForm && (
+        <ManualAttendanceModal
+          isAdmin={isAdmin}
+          assignedBranch={assignedBranch}
+          customers={customers}
+          memberships={memberships}
+          branches={branches}
+          onClose={() => setManualAttendanceForm(false)}
+          onSave={(input) => {
+            const result = recordManualAttendance(input);
+            if (result.ok) {
+              setManualAttendanceForm(false);
+              onAction("Manual attendance recorded");
+              return null;
+            }
+            return result.error;
+          }}
+        />
+      )}
+      {walkInForm && (
+        <Modal label="Register walk-in" onClose={closeWalkInFlow} wide>
+          <WalkInForm
+            customers={customers}
+            createdCustomer={createdWalkInCustomer}
+            servicePrices={servicePrices}
+            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            onBack={closeWalkInFlow}
+            onNewProfile={() => setWalkInCustomerForm(true)}
+            onSave={(visit) => {
+              addWalkIn(visit);
+              closeWalkInFlow();
+              onAction("Walk-in visit registered");
+            }}
+          />
+        </Modal>
+      )}
+      {walkInCustomerForm && (
+        <Modal label="Add new customer" onClose={() => setWalkInCustomerForm(false)} wide>
+          <CustomerForm
+            customers={customers}
+            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            onCancel={() => setWalkInCustomerForm(false)}
+            onSave={(customer) => {
+              upsertCustomer(customer);
+              setCreatedWalkInCustomer(customer);
+              setWalkInCustomerForm(false);
+              onAction("Customer created");
+            }}
+          />
+        </Modal>
+      )}
+      {membershipForm && (
+        <Modal label="Create membership" onClose={() => setMembershipForm(false)} wide>
+          <MembershipForm
+            customers={customers}
+            plans={plans}
+            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            onBack={() => setMembershipForm(false)}
+            onSave={(membership) => {
+              createMembership(membership);
+              setMembershipForm(false);
+              onAction("Membership created");
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function UnifiedTabs({
+  view,
+  onChange,
+}: {
+  view: "overview" | "walkins" | "memberships" | "attendance";
+  onChange: (view: "overview" | "walkins" | "memberships" | "attendance") => void;
+}) {
+  return (
+    <div className="mb-5 flex flex-wrap gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-sm sm:w-fit">
+      {([
+        ["overview", "Overview"],
+        ["walkins", "Walk-ins"],
+        ["memberships", "Memberships"],
+        ["attendance", "Attendance History"],
+      ] as const).map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onChange(value)}
+          className={`rounded-md px-4 py-2 ${view === value ? "bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "text-[var(--text-muted)]"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function UnifiedOverview({
+  visits,
+  walkIns,
+  memberships,
+  payments,
+  branch,
+  branches,
+  onBranchChange,
+  onSelectVisit,
+}: {
+  visits: VisitRecord[];
+  walkIns: WalkIn[];
+  memberships: Membership[];
+  payments: PaymentRecord[];
+  branch?: string;
+  branches?: string[];
+  onBranchChange?: (value: string) => void;
+  onSelectVisit: (visit: VisitRecord) => void;
+}) {
+  const latestActivityDate = [...visits.map((visit) => visit.date), ...walkIns.map((visit) => visit.date)]
+    .sort((left, right) => right.localeCompare(left))[0];
+  const todayVisits = visits.filter(
+    (visit) => visit.date === latestActivityDate && visit.status !== "Voided",
+  );
+  const todayWalkIns = walkIns.filter((visit) => visit.date === latestActivityDate);
+  const collectedRevenue = payments
+    .filter((payment) => (payment.status ?? "Paid") === "Paid")
+    .reduce((total, payment) => total + payment.amount, 0);
+  const recentVisits = [...visits]
+    .filter((visit) => visit.status !== "Voided")
+    .sort((left, right) => `${right.date} ${right.timeIn}`.localeCompare(`${left.date} ${left.timeIn}`))
+    .slice(0, 8);
+
+  const metrics = [
+    ["Today's check-ins", todayVisits.length],
+    ["Today's walk-ins", todayWalkIns.length],
+    ["Active memberships", memberships.filter((membership) => membership.status === "Active").length],
+    ["Collected revenue", php(collectedRevenue)],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map(([label, value]) => (
+          <div key={label} className="summary-card">
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
+          </div>
+        ))}
+      </div>
+      <section className="data-table-section">
+        <div className="data-table-toolbar flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold">Recent attendance</h3>
+          <p className="text-xs text-[var(--text-muted)]">Latest check-ins across the selected branch scope.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {latestActivityDate && <span className="text-xs text-[var(--text-muted)]">Latest activity: {latestActivityDate}</span>}
+            {branch !== undefined && branches && onBranchChange && (
+              <FilterSelect
+                value={branch}
+                options={["All branches", ...branches]}
+                onChange={onBranchChange}
+              />
+            )}
+          </div>
+        </div>
+        {recentVisits.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[850px]">
+              <thead>
+                <tr>
+                  {['Customer', 'Date', 'Time-in', 'Time-out', 'Type', 'Source', 'Status'].map((label) => (
+                    <th key={label}>{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {recentVisits.map((visit) => (
+                  <tr key={visit.id} tabIndex={0} onClick={() => onSelectVisit(visit)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectVisit(visit); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
+                    <td className="font-semibold">{visit.customer}</td>
+                    <td className="text-[var(--text-muted)]">{visit.date}</td>
+                    <td>{visit.timeIn}</td>
+                    <td className="text-[var(--text-muted)]">{visit.timeOut || "Open"}</td>
+                    <td className="text-[var(--text-muted)]">{visit.type}</td>
+                    <td className="text-[var(--text-muted)]">{visit.source}</td>
+                    <td><span className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(visit.status)}`}>{visit.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty text="No attendance activity is available for this branch yet." />
+        )}
+      </section>
     </div>
   );
 }
@@ -321,6 +481,9 @@ function WalkInList({
   setQuery,
   status,
   setStatus,
+  branch,
+  branches,
+  onBranchChange,
   onSelect,
   onDelete,
 }: {
@@ -331,6 +494,9 @@ function WalkInList({
   setQuery: (value: string) => void;
   status: string;
   setStatus: (value: string) => void;
+  branch?: string;
+  branches?: string[];
+  onBranchChange?: (value: string) => void;
   onSelect: (row: WalkIn) => void;
   onDelete: (row: WalkIn) => void;
 }) {
@@ -363,12 +529,9 @@ function WalkInList({
             ),
           ],
         ].map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
-          >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-1 text-xl font-bold">{value}</p>
+          <div key={label} className="summary-card">
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
           </div>
         ))}
       </div>
@@ -378,6 +541,9 @@ function WalkInList({
         setQuery={setQuery}
         status={status}
         setStatus={setStatus}
+        branch={branch}
+        branches={branches}
+        onBranchChange={onBranchChange}
         statusOptions={[
           "All statuses",
           "Paid",
@@ -387,8 +553,8 @@ function WalkInList({
           "Completed",
         ]}
       >
-        <table className="w-full min-w-[850px] text-left text-xs">
-          <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
+        <table className="data-table min-w-[850px]">
+          <thead>
             <tr>
               {[
                 "Visit ID",
@@ -401,7 +567,7 @@ function WalkInList({
                 "Payment",
                 "",
               ].map((label) => (
-                <th key={label} className="px-5 py-3 font-semibold">
+                <th key={label}>
                   {label}
                 </th>
               ))}
@@ -410,29 +576,29 @@ function WalkInList({
           <tbody className="divide-y divide-[var(--border)]">
             {rows.map((row) => (
               <tr key={row.id} tabIndex={0} onClick={() => onSelect(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(row); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
-                <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
+                <td className="font-medium text-[var(--text-muted)]">
                   {row.id}
                 </td>
-                <td className="px-5 py-4 font-semibold">{row.customer}</td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td className="font-semibold">{row.customer}</td>
+                <td className="text-[var(--text-muted)]">
                   {row.branch}
                 </td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td className="text-[var(--text-muted)]">
                   {row.date}
                 </td>
-                <td className="px-5 py-4">{row.timeIn}</td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td>{row.timeIn}</td>
+                <td className="text-[var(--text-muted)]">
                   {row.timeOut}
                 </td>
-                <td className="px-5 py-4">{php(row.fee)}</td>
-                <td className="px-5 py-4">
+                <td>{php(row.fee)}</td>
+                <td>
                   <span
                     className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(row.payment)}`}
                   >
                     {row.payment}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
+                <td className="text-right" onClick={(event) => event.stopPropagation()}>
                   <RowActions onDetails={() => onSelect(row)} onDelete={() => onDelete(row)} />
                 </td>
               </tr>
@@ -454,6 +620,9 @@ function MembershipList({
   setQuery,
   status,
   setStatus,
+  branch,
+  branches,
+  onBranchChange,
   onSelect,
   onDelete,
 }: {
@@ -463,6 +632,9 @@ function MembershipList({
   setQuery: (value: string) => void;
   status: string;
   setStatus: (value: string) => void;
+  branch?: string;
+  branches?: string[];
+  onBranchChange?: (value: string) => void;
   onSelect: (row: Membership) => void;
   onDelete: (row: Membership) => void;
 }) {
@@ -491,12 +663,9 @@ function MembershipList({
             allRows.filter((row) => ["soon", "today"].includes(membershipDueState(row.end).key)).length,
           ],
         ].map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
-          >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-1 text-xl font-bold">{value}</p>
+          <div key={label} className="summary-card">
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
           </div>
         ))}
       </div>
@@ -506,6 +675,9 @@ function MembershipList({
         setQuery={setQuery}
         status={status}
         setStatus={setStatus}
+        branch={branch}
+        branches={branches}
+        onBranchChange={onBranchChange}
         statusOptions={[
           "All statuses",
           "Active",
@@ -514,8 +686,8 @@ function MembershipList({
           "Suspended",
         ]}
       >
-        <table className="w-full min-w-[850px] text-left text-xs">
-          <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
+        <table className="data-table min-w-[850px]">
+          <thead>
             <tr>
               {[
                 "Membership ID",
@@ -528,7 +700,7 @@ function MembershipList({
                 "Branch",
                 "",
               ].map((label) => (
-                <th key={label} className="px-5 py-3 font-semibold">
+                <th key={label}>
                   {label}
                 </th>
               ))}
@@ -537,18 +709,18 @@ function MembershipList({
           <tbody className="divide-y divide-[var(--border)]">
             {rows.map((row) => (
               <tr key={row.id} tabIndex={0} onClick={() => onSelect(row)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(row); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
-                <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
+                <td className="font-medium text-[var(--text-muted)]">
                   {row.id}
                 </td>
-                <td className="px-5 py-4 font-semibold">{row.customer}</td>
-                <td className="px-5 py-4">{row.plan}</td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td className="font-semibold">{row.customer}</td>
+                <td>{row.plan}</td>
+                <td className="text-[var(--text-muted)]">
                   {row.start}
                 </td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td className="text-[var(--text-muted)]">
                   {row.end}
                 </td>
-                <td className="px-5 py-4">
+                <td>
                   <span
                     className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(row.status)}`}
                   >
@@ -556,17 +728,17 @@ function MembershipList({
                   </span>
                   {membershipDueState(row.end).key !== "upcoming" && <p className={`mt-1 text-[10px] ${membershipDueState(row.end).key === "overdue" ? "text-red-600" : "text-amber-600"}`}>{membershipDueState(row.end).label}</p>}
                 </td>
-                <td className="px-5 py-4">
+                <td>
                   <span
                     className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(row.payment)}`}
                   >
                     {row.payment}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">
+                <td className="text-[var(--text-muted)]">
                   {row.branch}
                 </td>
-                <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
+                <td className="text-right" onClick={(event) => event.stopPropagation()}>
                   <RowActions onDetails={() => onSelect(row)} onDelete={() => onDelete(row)} />
                 </td>
               </tr>
@@ -631,6 +803,9 @@ function DataTable({
   status,
   setStatus,
   statusOptions,
+  branch,
+  branches,
+  onBranchChange,
   children,
 }: {
   title: string;
@@ -639,11 +814,14 @@ function DataTable({
   status: string;
   setStatus: (value: string) => void;
   statusOptions: string[];
+  branch?: string;
+  branches?: string[];
+  onBranchChange?: (value: string) => void;
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-      <div className="flex flex-col justify-between gap-3 border-b border-[var(--border)] p-4 sm:flex-row sm:items-center sm:p-5">
+    <section className="data-table-section">
+      <div className="data-table-toolbar flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <h3 className="font-semibold">{title}</h3>
         <div className="flex flex-wrap gap-2">
           <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
@@ -666,6 +844,13 @@ function DataTable({
               ))}
             </select>
           </label>
+          {branch !== undefined && branches && onBranchChange && (
+            <FilterSelect
+              value={branch}
+              options={["All branches", ...branches]}
+              onChange={onBranchChange}
+            />
+          )}
         </div>
       </div>
       <div className="overflow-x-auto">{children}</div>

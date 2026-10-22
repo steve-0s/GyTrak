@@ -70,21 +70,6 @@ export default function AdministrationPages({
         onAction={onAction}
       />
     );
-  if (editingBranch)
-    return (
-      <Modal label={editingBranch.name ? "Edit branch" : "Create branch"} onClose={() => setEditingBranch(null)}>
-        <BranchForm
-        branch={editingBranch.name ? editingBranch : undefined}
-        onBack={() => setEditingBranch(null)}
-        onSave={(branch) => {
-          const existing = branches.find((item) => item.name === editingBranch.name);
-          upsertBranch({ ...branch, id: existing?.id ?? nextMockId("BR", 5) });
-          setEditingBranch(null);
-          onAction("Branch saved");
-        }}
-        />
-      </Modal>
-    );
   if (editingAccount)
     return (
       <Modal label={editingAccount.email ? "Edit Front Desk account" : "Create Front Desk account"} onClose={() => setEditingAccount(null)} wide>
@@ -193,6 +178,23 @@ export default function AdministrationPages({
         />
       )}
       {view === "audit" && <AuditList rows={auditLogs} query={query} setQuery={setQuery} />}
+      {editingBranch && (
+        <Modal
+          label={editingBranch.name ? "Edit branch" : "Create branch"}
+          onClose={() => setEditingBranch(null)}
+        >
+          <BranchForm
+            branch={editingBranch.name ? editingBranch : undefined}
+            onBack={() => setEditingBranch(null)}
+            onSave={(branch) => {
+              const existing = branches.find((item) => item.name === editingBranch.name);
+              upsertBranch({ ...branch, id: existing?.id ?? nextMockId("BR", 5) });
+              setEditingBranch(null);
+              onAction("Branch saved");
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
