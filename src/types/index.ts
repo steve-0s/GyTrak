@@ -104,3 +104,14 @@ export type ReminderRecord = {
   source: ReminderSource; channel: ReminderChannel; initiatedBy?: string; eligibleDate: string
   attemptedAt: string; status: ReminderStatus; message: string; reason?: string; note?: string
 }
+export type NotificationCategory = "membership" | "payment" | "walk-in" | "attendance" | "rfid" | "scanner" | "reminder"
+export type NotificationRecord = {
+  id: string
+  category: NotificationCategory
+  title: string
+  message: string
+  timestamp: string
+  branch?: string
+  roles?: Role[]
+  destination?: string
+}

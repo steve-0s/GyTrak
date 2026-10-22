@@ -188,7 +188,7 @@ function App() {
   return (
     <RoleLayout role={role} theme={theme}>
       <Sidebar navGroups={navGroups} currentPage={currentPage} onNavigate={selectPage} icons={icons} />
-      <Header role={role} accountName={account?.name} now={now} visible={headerVisible} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} onRoleSwitch={handleRoleSwitch} onSignOut={signOut} onNotify={() => showNotice("No new notifications")} />
+      <Header role={role} accountName={account?.name} branch={account?.branch} now={now} visible={headerVisible} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} onRoleSwitch={handleRoleSwitch} onSignOut={signOut} onNavigate={selectPage} />
       <aside className="hidden fixed inset-y-0 left-0 z-20 w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col">
         <div className="flex h-20 items-center gap-3 border-b border-[var(--border)] px-7">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)] text-[var(--on-accent)]">

@@ -6,6 +6,8 @@ declare module 'react' {
   export function useState<S = undefined>(): [S | undefined, Dispatch<SetStateAction<S | undefined>>]
   export function useEffect(effect: () => void | (() => void), dependencies?: unknown[]): void
   export function useMemo<T>(factory: () => T, dependencies: unknown[]): T
+  export function useRef<T>(initialValue: T): { current: T }
+  export function useRef<T>(initialValue: T | null): { current: T | null }
   export type Context<T> = { Provider: (props: { value: T; children?: ReactNode }) => any }
   export function createContext<T>(defaultValue: T): Context<T>
   export function useContext<T>(context: Context<T>): T

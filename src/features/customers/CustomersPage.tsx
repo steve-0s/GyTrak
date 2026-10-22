@@ -50,18 +50,18 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
   const [type, setType] = useState("All types");
   const [status, setStatus] = useState("All statuses");
   const [page, setPage] = useState(1);
+  const scopedCustomers = useMemo(() => customers.filter((customer) => branch === "All branches" || customer.branch === branch), [customers, branch]);
   const visible = useMemo(
     () =>
-      customers.filter(
+      scopedCustomers.filter(
         (customer) =>
-          (branch === "All branches" || customer.branch === branch) &&
           (type === "All types" || customer.type === type) &&
           (status === "All statuses" || customer.status === status) &&
           `${customer.name} ${customer.id} ${customer.phone}`
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
-    [customers, branch, type, status, query],
+    [scopedCustomers, type, status, query],
   );
   const selected = customers.find((customer) => customer.id === selectedId);
   const pendingRegistrations = registrations.filter((item) => ["Pending", "Needs correction"].includes(item.status) && (isAdmin || item.branch === assignedBranch));
@@ -169,18 +169,18 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
       </div>
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Total customers", customers.length],
+          ["Total customers", scopedCustomers.length],
           [
             "Active members",
-            customers.filter((c) => c.status === "Active").length,
+            scopedCustomers.filter((c) => c.status === "Active").length,
           ],
           [
             "Walk-in customers",
-            customers.filter((c) => c.type === "Walk-in").length,
+            scopedCustomers.filter((c) => c.type === "Walk-in").length,
           ],
           [
             "New this period",
-            customers.filter((c) => c.registered.includes("Oct")).length,
+            scopedCustomers.filter((c) => c.registered.includes("Oct")).length,
           ],
         ].map(([label, value]) => (
           <div
@@ -380,7 +380,7 @@ function CustomerDetails({
   onAction,
 }: {
   customer: Customer;
-  visits: Array<{ customer: string; date: string; timeIn: string; timeOut: string; id: string; branch: string; source: string; status: string }>;
+  visits: Array<{ customerId: string; customer: string; date: string; timeIn: string; timeOut: string; id: string; branch: string; source: string; status: string }>;
   onBack: () => void;
   onEdit: () => void;
   onConvert: () => void;
@@ -391,7 +391,7 @@ function CustomerDetails({
   const [visitTime, setVisitTime] = useState("");
   const visits = allVisits.filter(
     (event) =>
-      event.customer === customer.name &&
+      event.customerId === customer.id &&
       (!visitDate || event.date.toLowerCase().includes(visitDate.toLowerCase())) &&
       (!visitTime || `${event.timeIn} ${event.timeOut}`.toLowerCase().includes(visitTime.toLowerCase())),
   );

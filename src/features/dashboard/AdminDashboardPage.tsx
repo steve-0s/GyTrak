@@ -35,7 +35,7 @@ const formatPHP = (value: number) => `₱${value.toLocaleString("en-PH")}`;
 const formatNumber = (value: number) => value.toLocaleString("en-PH");
 
 export default function AdminDashboardPage({ onAction }: Props) {
-  const { branches: branchRecords, customers, memberships, visits, walkIns, payments } = useGymData();
+  const { branches: branchRecords, customers, memberships, visits, walkIns, payments, registrations } = useGymData();
   const branches = ["All Branches", ...branchRecords.map((item) => item.name)];
   const branchRows = useMemo(() => branchRecords.filter((item) => item.status === "Active").map((item) => {
     const branchVisits = visits.filter((visit) => visit.branch === item.name);
@@ -76,6 +76,12 @@ export default function AdminDashboardPage({ onAction }: Props) {
     [visibleBranches],
   );
   const expiringSoon = visibleBranches.reduce((sum, row) => sum + row.expiring, 0);
+  const pendingRegistrations = registrations.filter((registration) => ["Pending", "Needs correction"].includes(registration.status)).length;
+  const pendingSyncEvents = visits.filter((visit) => visit.sync === "Pending" || visit.sync === "Failed").length;
+  const reminderFollowUps = memberships.filter((membership) => {
+    const days = Math.round((new Date(membership.end).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
+    return membership.status !== "Suspended" && days <= 7;
+  }).length;
   const cards = [
     [
       "Total customers",
@@ -503,9 +509,9 @@ export default function AdminDashboardPage({ onAction }: Props) {
           </div>
           <div className="space-y-1 p-3">
             {[
-              ["Memberships expiring soon", "37 across all branches", "Review"],
-              ["Pending registrations", "6 require duplicate review", "Review"],
-              ["Sync queue", "3 records pending retry", "Open"],
+              ["Memberships expiring soon", `${reminderFollowUps} across all branches`, "Review"],
+              ["Pending registrations", `${pendingRegistrations} require review`, "Review"],
+              ["Sync queue", `${pendingSyncEvents} records pending retry`, "Open"],
             ].map((item) => (
               <button
                 key={item[0]}

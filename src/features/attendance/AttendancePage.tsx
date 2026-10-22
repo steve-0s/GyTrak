@@ -61,10 +61,10 @@ export default function AttendancePage({ isAdmin, branch: assignedBranch = "Maka
       <PageHeader branch={branch} title="Attendance" subtitle="Review attendance events and maintain a traceable correction history." onAction={() => setLogging(true)} />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Check-ins in period", events.filter((event) => event.status !== "Voided").length],
-          ["Unique visitors", new Set(events.map((event) => event.customer)).size],
-          ["Currently checked in", events.filter((event) => event.status === "Checked in").length],
-          ["Manual corrections", events.filter((event) => event.source === "Manual").length],
+          ["Check-ins in period", rows.filter((event) => event.status !== "Voided").length],
+          ["Unique visitors", new Set(rows.map((event) => event.customer)).size],
+          ["Currently checked in", rows.filter((event) => event.status === "Checked in").length],
+          ["Manual corrections", rows.filter((event) => event.source === "Manual").length],
         ].map(([label, value]) => <div key={label}><Stat label={label as string} value={value as number} /></div>)}
       </div>
       <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
