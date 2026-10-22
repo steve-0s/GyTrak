@@ -1,14 +1,15 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { auditLogs as seedAuditLogs, branches as seedBranches, coaches as seedCoaches, customers as seedCustomers, frontDeskAccounts as seedAccounts, keyfobs as seedKeyfobs, membershipPayments as seedPayments, membershipPlans as seedPlans, memberships as seedMemberships, visitRecords as seedVisits, walkIns as seedWalkIns } from "../data/mockData";
 import { nextMockId, nowLabel } from "../services/mockApi";
 import { normalizePhone } from "../lib/utils";
 import { addBillingMonths, durationToMonths } from "../lib/membership";
-import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn } from "../types";
+import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn, ReminderRecord, ReminderSettings } from "../types";
+import { defaultReminderSettings, daysUntil, reminderStage, renderTemplate } from "../lib/reminders";
 
 const storageKey = "gytrak-mock-gym-data-v2";
 const branchRecords: BranchRecord[] = seedBranches.map((branch) => ({ ...branch }));
 
-type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[] };
+type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[]; reminderRecords: ReminderRecord[]; reminderSettings: ReminderSettings };
 type ProfileInput = { branchId: string; name: string; phone: string; email: string };
 type GymDataContextValue = GymData & {
   branches: BranchRecord[];
@@ -38,6 +39,8 @@ type GymDataContextValue = GymData & {
   upsertFrontDeskAccount: (account: FrontDeskAccount) => void;
   toggleFrontDeskAccount: (id: string) => void;
   addAuditLog: (entry: AuditLog) => void;
+  addReminder: (record: ReminderRecord) => void;
+  updateReminderSettings: (settings: ReminderSettings) => void;
 };
 
 function readData(): GymData {
@@ -54,6 +57,7 @@ function readData(): GymData {
       branches: stored.branches ?? branchRecords.map((item) => ({ ...item })),
       frontDeskAccounts: stored.frontDeskAccounts ?? seedAccounts.map((item, index) => ({ ...item, id: `FDA-${index + 1}` })),
       auditLogs: stored.auditLogs ?? seedAuditLogs.map((item) => ({ ...item })),
+      reminderRecords: stored.reminderRecords ?? [], reminderSettings: { ...defaultReminderSettings, ...(stored.reminderSettings ?? {}), channels: { ...defaultReminderSettings.channels, ...(stored.reminderSettings?.channels ?? {}) } },
     };
   } catch { /* use seed data */ }
   return {
@@ -70,6 +74,7 @@ function readData(): GymData {
     branches: branchRecords.map((item) => ({ ...item })),
     frontDeskAccounts: seedAccounts.map((item, index) => ({ ...item, id: `FDA-${index + 1}` })),
     auditLogs: seedAuditLogs.map((item) => ({ ...item })),
+    reminderRecords: [], reminderSettings: { ...defaultReminderSettings, channels: { ...defaultReminderSettings.channels } },
   };
 }
 
@@ -206,7 +211,24 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   const upsertFrontDeskAccount = (account: FrontDeskAccount) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.some((item) => item.id === account.id) ? data.frontDeskAccounts.map((item) => item.id === account.id ? account : item) : [account, ...data.frontDeskAccounts] });
   const toggleFrontDeskAccount = (id: string) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Inactive" : "Active" } : item) });
   const addAuditLog = (entry: AuditLog) => persist({ ...data, auditLogs: [entry, ...data.auditLogs] });
-  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog }), [data]);
+  const addReminder = (record: ReminderRecord) => { if (data.reminderRecords.some((item) => item.membershipId === record.membershipId && item.stage === record.stage && item.channel === record.channel && item.status !== "Failed")) return; persist({ ...data, reminderRecords: [record, ...data.reminderRecords] }); };
+  const updateReminderSettings = (settings: ReminderSettings) => persist({ ...data, reminderSettings: settings });
+  useEffect(() => {
+    if (!data.reminderSettings.enabled) return;
+    const additions: ReminderRecord[] = [];
+    data.memberships.forEach((membership) => {
+      const days = daysUntil(membership.end); const stage = days === null ? null : reminderStage(days);
+      if (!stage || days === null || !data.reminderSettings.intervals.includes(days)) return;
+      const customer = data.customers.find((item) => item.id === membership.customerId);
+      if (!customer) return;
+      const channel = data.reminderSettings.channels.email && customer.email ? "email" : data.reminderSettings.channels.sms && customer.phone ? "SMS" : null;
+      if (data.reminderRecords.some((item) => item.membershipId === membership.id && item.stage === stage && item.source === "simulated automatic")) return;
+      const common = { id: nextMockId("REM", 700), customerId: customer.id, membershipId: membership.id, branch: membership.branch, stage, source: "simulated automatic" as const, eligibleDate: membership.end, attemptedAt: new Date().toISOString() };
+      additions.push(channel ? { ...common, channel, status: "Simulated" as const, message: renderTemplate(channel === "email" ? data.reminderSettings.emailTemplate : data.reminderSettings.smsTemplate, membership, customer, data.reminderSettings) } : { ...common, channel: "email" as const, status: "Skipped" as const, message: "", reason: "No email or phone contact information is available." });
+    });
+    if (additions.length) { const next = { ...data, reminderRecords: [...additions, ...data.reminderRecords] }; setData(next); localStorage.setItem(storageKey, JSON.stringify(next)); }
+  }, [data.memberships, data.customers, data.reminderSettings, data.reminderRecords]);
+  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings }), [data]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

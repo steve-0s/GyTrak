@@ -26,7 +26,7 @@ type Props = { branch?: string; onAction: (message: string) => void };
 const php = (amount: number) => `₱${amount.toLocaleString("en-PH")}`;
 
 export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { registrations, visits, walkIns, memberships } = useGymData();
+  const { registrations, visits, walkIns, memberships, customers, reminderRecords } = useGymData();
   const branch = assignedBranch;
   const attendanceRecords = visits.filter((record) => record.branch === branch).map((record) => ({ customer: record.customer, branch: record.branch, in: record.timeIn, out: record.timeOut, type: record.type, source: record.source.startsWith("RFID") ? "RFID" : "Manual", status: record.status }));
   const branchWalkIns = walkIns.filter((visit) => visit.branch === branch);
@@ -104,6 +104,10 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
           </div>
         ))}
       </div>
+      <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h3 className="font-semibold">Membership reminders</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Branch-scoped follow-up · simulations only</p></div><button onClick={() => onAction("Membership reminders opened")} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">Open reminders</button></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">{[["Expiring soon", memberships.filter((m) => m.branch === branch && (membershipDueState(m.end).key === "soon" || membershipDueState(m.end).key === "today")).length], ["Overdue", memberships.filter((m) => m.branch === branch && membershipDueState(m.end).key === "overdue").length], ["Missing contact", memberships.filter((m) => { const c = customers.find((x) => x.id === m.customerId); return m.branch === branch && !c?.email && !c?.phone; }).length], ["Simulated attempts", reminderRecords.filter((r) => r.branch === branch && r.source === "simulated automatic").length]].map(([label, value]) => <button key={String(label)} onClick={() => onAction("Membership reminders opened")} className="rounded-lg bg-[var(--bg)] p-3 text-left"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></button>)}</div>
+      </section>
 
       <div className="mt-6">
         <PeakActivityCard branch={branch as keyof typeof branchAnalytics} />

@@ -1004,6 +1004,12 @@ function MembershipDetails({
       </div>
       <div id="membership-payment-history" className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Payment history</h3>{payments.length ? <div className="mt-3 space-y-2 text-xs">{payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
       <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--border)] pt-5">
+        <button
+          onClick={() => onAction("Membership reminders opened")}
+          className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]"
+        >
+          Send reminder
+        </button>
         {membership.status === "Active" && (
           <button
             onClick={() => onUpdate({ ...membership, status: "Suspended" })}

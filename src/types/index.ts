@@ -16,6 +16,7 @@ export type Customer = {
   endDate?: string
   keyfob?: string
   classification?: "Regular" | "Student"
+  photo?: string
 }
 export type RegistrationStatus = "Pending" | "Needs correction" | "Approved" | "Rejected"
 export type RegistrationSubmission = {
@@ -86,3 +87,20 @@ export type Coach = { id: string; name: string; specialty: string; branch: strin
 export type Keyfob = { id: string; uid: string; customer: string; branch: string; status: "Assigned" | "Unassigned" | "Deactivated"; date: string }
 export type FrontDeskAccount = { id: string; name: string; email: string; branch: string; status: "Active" | "Inactive"; created: string; activity: string }
 export type AuditLog = { time: string; user: string; role: Role; branch: string; action: string; record: string; summary: string }
+export type ReminderStage = "7 days before" | "3 days before" | "Due today" | "1 day overdue" | "3 days overdue"
+export type ReminderSource = "manual" | "simulated automatic"
+export type ReminderChannel = "email" | "SMS"
+export type ReminderStatus = "Scheduled" | "Simulated" | "Failed" | "Skipped" | "Cancelled"
+export type ReminderSettings = {
+  enabled: boolean
+  channels: { email: boolean; sms: boolean }
+  intervals: number[]
+  emailTemplate: string
+  smsTemplate: string
+  gymContact: string
+}
+export type ReminderRecord = {
+  id: string; customerId: string; membershipId: string; branch: string; stage: ReminderStage
+  source: ReminderSource; channel: ReminderChannel; initiatedBy?: string; eligibleDate: string
+  attemptedAt: string; status: ReminderStatus; message: string; reason?: string; note?: string
+}

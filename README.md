@@ -24,8 +24,8 @@ GyTrak is an offline-first, multi-branch gym management system designed to simpl
 ### RFID and Attendance Management
 
 - **RFID Keyfob Assignment** — Assign, deactivate, and reassign RFID keyfobs while maintaining assignment history.
-- **RFID Attendance Tracking** — Use dedicated scanners for time-in and time-out.
-- **Manual Attendance Management** — Allow authorized front desk staff to create, view, update, and delete attendance records when necessary.
+- **RFID Attendance Tracking** — Use the attendance scanner for member time-in/time-out. A separate keyfob-assignment scanner reads RFID UIDs without creating attendance.
+- **Manual Attendance Management** — Allow Admin and authorized Front Desk staff to create, correct, and void attendance records while preserving audit history.
 - **Walk-in Check-in** — Support manual check-in and check-out for walk-in visitors, with optional temporary RFID passes.
 - **Attendance Monitoring** — View attendance records, customer visit history, and branch activity.
 - **Audit Trail** — Track manual attendance changes, including the staff member responsible, timestamp, and reason for the change.
@@ -33,9 +33,9 @@ GyTrak is an offline-first, multi-branch gym management system designed to simpl
 ### Multi-Branch Management
 
 - **Branch Management** — Create, update, and deactivate gym branches.
-- **Branch-Specific Operations** — Manage customers, coaches, visits, attendance, and keyfob assignments by branch.
-- **Front Desk Assignment** — Assign front desk accounts to specific branches and restrict their access accordingly.
-- **Centralized Customer Profiles** — Support shared customer profiles across branches while keeping visits associated with the branch where they occurred.
+- **Branch-Specific Operations** — Manage memberships, visits, attendance, and keyfob assignments by branch.
+- **Front Desk Assignment** — Assign Front Desk accounts to one or more branches and restrict their records and actions to those assignments.
+- **Globally Shared Customer Profiles** — Keep one customer identity across branches; memberships belong to a specific branch and are never duplicated merely because the customer uses multiple locations.
 
 ### Offline Support and Synchronization
 
@@ -84,7 +84,7 @@ Front Desk accounts manage day-to-day operations within their assigned branches.
 - Convert walk-in customers into registered members.
 - Assign and manage RFID keyfobs.
 - Monitor RFID time-in and time-out records.
-- Manually create, view, update, and delete attendance records.
+- Manually create, view, correct, and void attendance records without deleting their history.
 - Generate and export branch-specific reports.
 - Monitor scanner status and pending attendance synchronization.
 
@@ -100,17 +100,17 @@ Front Desk accounts manage day-to-day operations within their assigned branches.
 
 GyTrak is designed to continue recording attendance even when the internet is unavailable.
 
-1. A member or coach scans their RFID keyfob.
-2. The local backend processes the scan and records the attendance event in SQLite.
-3. Pending records remain stored locally while offline.
-4. When connectivity returns, pending records are synchronized with the central PostgreSQL database.
-5. Successfully synchronized records are marked as synced locally.
+1. A member scans their RFID keyfob on the branch attendance scanner.
+2. The first valid scan creates time-in for the member's `Asia/Manila` business day; the next valid scan closes the open session as time-out.
+3. After a session closes, a later valid scan may start a new session on the same business day.
+4. Duplicate events and conflicting open sessions must be detected rather than silently creating incorrect records.
+5. Offline records may remain pending for later idempotent synchronization while preserving the original events.
 
 ### Scanner Functions
 
-- **Scanner 1:** Time-in
-- **Scanner 2:** Time-out
-- **Registration Reader:** Optional front desk RFID reader for assigning keyfobs to customer profiles.
+- **Attendance scanner:** Processes valid RFID scans as time-in/time-out events for the branch business day.
+- **Keyfob assignment scanner:** Reads an RFID UID during assignment, reassignment, or deactivation. It never creates attendance.
+- The branch and scanner identity should be captured with each scanner event. Device IDs, event IDs, and resend guarantees remain unresolved design decisions.
 
 ## QR Code Registration Workflow
 
@@ -121,6 +121,24 @@ GyTrak is designed to continue recording attendance even when the internet is un
 5. The visit is recorded separately from registration and confirmed when the visitor actually checks in at the gym.
 6. Returning walk-in visitors can use their existing profiles for subsequent visits.
 7. If a walk-in purchases a membership, front desk staff update the customer's membership information and assign an RFID keyfob without creating another profile.
+
+## Confirmed Business Rules
+
+- Customer records are globally shared and identified by a stable customer ID. Phone and email uniqueness is not yet decided.
+- Memberships are branch-specific and billed monthly. Renewal should extend the existing membership record where practical, while preserving payment history and membership-date history. A pending or partial payment does not activate a membership; membership status and payment status remain separate.
+- Walk-in fees are separate from membership payments and revenue. Attendance records are separate from financial transactions. Reminders, attendance events, and renewals must not create payments automatically.
+- Admin users can access all branches. Front Desk users can be assigned to multiple branches and can access or act only within those branches. Authorization must be enforced by application rules, not only by hidden UI controls.
+- A customer may hold multiple active keyfobs. A keyfob UID can have only one active assignment at a time; deactivated UIDs may be reassigned without erasing prior assignment history.
+- The normal attendance flow uses the first valid scan for time-in, the next valid scan for time-out, and allows a later new session on the same business day after closure. Open-session conflicts and duplicate scanner events must be prevented or audited.
+- Authorized staff can add missing time-outs, correct attendance dates/times, and void invalid records. Manual and RFID attendance use the same logical attendance model and every correction records original values, new values, actor, timestamp, and reason where required.
+- Public QR submissions must have creation and expiration timestamps, and expired submissions must be rejected before processing. Exact duration, rate limits, and identity verification are unresolved.
+- Use `Asia/Manila` as the business timezone. The business day runs midnight to midnight in that timezone for attendance and daily reports.
+
+## Unresolved Business Decisions
+
+See `docs/database-schema-proposal.md` for database-level alternatives and trade-offs. Pending decisions include contact uniqueness; refunds, voids, discounts, and taxes; QR expiration duration, rate limits, and identity verification; duplicate-scan cooldown and second-session approval; scanner/device event identity and resend guarantees; audit actor handling for public events; and whether a separate membership-period history table is needed.
+
+The business rules above describe intended behavior. The schema proposal documents a future relational design; they do not mean every rule is already implemented in the current frontend prototype.
 
 ## Tech Stack
 

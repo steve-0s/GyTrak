@@ -22,7 +22,7 @@ The relational model below separates durable business entities from display fiel
 ### Confirmed by the current application
 
 - There are branches, Admin and Front Desk roles, and public branch-specific QR workflows.
-- Front Desk access is assigned to a branch; Admin access is cross-branch.
+- Front Desk access is assigned to one or more branches; Admin access is cross-branch.
 - Customers can have memberships, walk-in records, visits, and optional keyfobs.
 - Membership payments are entered manually and payment history is retained.
 - A visit has separate time-in and time-out values, a source, a status, and scanner synchronization state.
@@ -35,7 +35,7 @@ The relational model below separates durable business entities from display fiel
 
 - Use database-generated UUIDs (or another globally unique identifier) instead of display-oriented IDs such as `MEM-00814`.
 - Represent branch access with assignment tables rather than a branch name string on an account.
-- Treat a membership row as a membership term/period and create a new row for a renewal or plan change instead of overwriting history.
+- Prefer extending the existing membership record during monthly renewal, while preserving prior payment records and membership-date changes through an approved history mechanism.
 - Store UTC instants plus the branch timezone rather than formatted strings such as `Oct 20, 2026` or `09:42 AM`.
 - Keep attendance events append-only and derive the logical visit's time-in/time-out state from them.
 - Store audit event type, affected table/key, and structured metadata in addition to a human-readable summary.
@@ -49,12 +49,12 @@ erDiagram
     users ||--o{ user_roles : has
     roles ||--o{ user_roles : grants
     users ||--o{ user_branch_assignments : receives
-    branches ||--o{ customers : serves
-    branches ||--o{ coaches : hosts
     customers ||--o{ memberships : owns
+    branches ||--o{ coaches : hosts
     membership_plans ||--o{ memberships : defines
     branches ||--o{ memberships : records
     memberships ||--o{ payments : receives
+    walk_ins ||--o{ payments : receives
     customers ||--o{ rfid_assignments : uses
     rfid_keyfobs ||--o{ rfid_assignments : has
     branches ||--o{ rfid_assignments : scopes
@@ -82,7 +82,7 @@ Purpose: gyms or locations used for access scope and operational records.
 | `name` | `varchar(120)` | yes | Unique branch name, subject to confirmation. |
 | `location` | `varchar(255)` | yes | Current display location. Could later be decomposed into address fields. |
 | `status` | `varchar(20)` | yes | `active` or `inactive`. |
-| `timezone` | `varchar(64)` | yes | Recommended; current prototype implicitly uses Philippine time. |
+| `timezone` | `varchar(64)` | yes | Use `Asia/Manila` for the current business timezone; retain an explicit field if future branch-local timezones are required. |
 | `created_at` | `timestamptz` | yes | Creation timestamp. |
 | `updated_at` | `timestamptz` | yes | Last administrative update. |
 
@@ -134,16 +134,15 @@ Primary key: (`user_id`, `role_id`, `assigned_at`) or a generated assignment ID.
 | `assigned_at` | `timestamptz` | yes | Assignment start. |
 | `revoked_at` | `timestamptz` | no | Null while active. |
 
-Primary key: (`user_id`, `branch_id`, `assigned_at`). Index active assignments by (`user_id`, `revoked_at`) and (`branch_id`, `revoked_at`). Current behavior is one assigned branch for Front Desk and all branches for Admin; the tables allow that rule to evolve without storing `"All branches"` as a fake branch.
+Primary key: (`user_id`, `branch_id`, `assigned_at`). Index active assignments by (`user_id`, `revoked_at`) and (`branch_id`, `revoked_at`). Front Desk users may have multiple active branch assignments; Admin users have all-branch scope through role authorization rather than a fake `"All branches"` branch row. Branch assignments are independent of customer records, and authorization must be enforced in application actions and selectors, not only by UI visibility.
 
 ### `customers`
 
-Purpose: customer identity and branch association.
+Purpose: globally shared customer identity. Customer personal information is not owned by a branch; branch context belongs on memberships, visits, transactions, submissions, and assignments.
 
 | Column | Type | Required | Notes |
 |---|---|---:|---|
 | `id` | `uuid` | yes | Primary key. |
-| `branch_id` | `uuid` | yes | FK to `branches`; confirm whether customers may be associated with multiple branches. |
 | `name` | `varchar(160)` | yes | Current profile name. |
 | `phone_normalized` | `varchar(32)` | yes | Used by QR matching and walk-in check-in. |
 | `phone_display` | `varchar(40)` | no | Optional formatted value. |
@@ -152,7 +151,7 @@ Purpose: customer identity and branch association.
 | `created_at` | `timestamptz` | yes | Replaces formatted `registered`. |
 | `updated_at` | `timestamptz` | yes | Profile update time. |
 
-Primary key: `id`. Index (`branch_id`), unique or non-unique index on `phone_normalized` depending on the confirmed identity rule. The current workflow permits multiple profiles with the same phone and reports an ambiguous match, so a global unique phone constraint would change existing behavior and should not be added without confirmation.
+Primary key: `id`. Add a non-unique index on `phone_normalized` for matching. The current workflow permits multiple profiles with the same phone and reports an ambiguous match, so a global unique phone constraint would change existing behavior and should not be added without confirmation. Customer identity must always use `id`, never phone or email alone.
 
 The current `status`, `plan`, `endDate`, `lastVisit`, and `keyfob` fields are denormalized summaries. Prefer deriving them from memberships, attendance, and RFID assignments, or retain them only as explicitly maintained snapshots.
 
@@ -204,9 +203,11 @@ Purpose: a customer's membership term at a branch and under a plan.
 | `ends_at` | `date` | yes | Calendar-month rules apply when calculated. |
 | `status` | `varchar(20)` | yes | `active`, `pending`, `expired`, or `suspended`. |
 | `created_at` / `updated_at` | `timestamptz` | yes | Lifecycle. |
-| `renewed_from_id` | `uuid` | no | Self-FK if renewals become new term rows. |
+| `renewal_count` or equivalent history reference | implementation-dependent | no | Renewal history must preserve prior dates and payment relationships. A separate period table remains a pending design choice. |
 
-Primary key: `id`. Foreign keys to customer, branch, plan, and optionally the previous membership. Index (`customer_id`, `ends_at`), (`branch_id`, `status`), and (`plan_id`). A check constraint requires `ends_at >= starts_at`.
+Primary key: `id`. Foreign keys to customer, branch, and plan. Index (`customer_id`, `ends_at`), (`branch_id`, `status`), and (`plan_id`). A check constraint requires `ends_at >= starts_at`. Memberships are billed monthly. The preferred renewal workflow extends the existing membership record, but must preserve prior payment records and membership-date changes through an approved history mechanism. A separate `membership_periods` table or append-only change history may be required; this decision remains unresolved.
+
+Membership status and payment status are separate. A pending or partial payment does not activate a membership under the current rule. Activation requires the full required payment and applicable validity rules; expiry alone must not be treated as proof of non-payment.
 
 The current UI stores `payment` and `price` on the membership. In the proposed model, payment state is derived from related payments, and the effective price is obtained from the plan or retained as an immutable `agreed_price_minor` snapshot when pricing history matters.
 
@@ -217,7 +218,9 @@ Purpose: manually recorded payment transactions and history.
 | Column | Type | Required | Notes |
 |---|---|---:|---|
 | `id` | `uuid` | yes | Primary key; also the idempotency key for a client submission. |
-| `membership_id` | `uuid` | yes | FK to `memberships` for current workflows. |
+| `membership_id` | `uuid` | no | FK to `memberships` for membership payments; null for a separately modeled walk-in payment. |
+| `walk_in_id` | `uuid` | no | FK to `walk_ins` when this payment is a walk-in fee; mutually exclusive with `membership_id`. |
+| `transaction_type` | `varchar(20)` | yes | `membership` or `walk_in`; keeps revenue categories distinguishable. |
 | `recorded_by_user_id` | `uuid` | yes in staff workflows | FK to `users`. |
 | `amount_minor` | `integer` or `bigint` | yes | Positive money amount. |
 | `currency` | `char(3)` | yes | Usually `PHP`. |
@@ -229,7 +232,7 @@ Purpose: manually recorded payment transactions and history.
 
 Primary key: `id`. Index (`membership_id`, `paid_at`) and (`recorded_by_user_id`, `paid_at`). Optional unique constraint on (`method`, `reference`) when references are guaranteed unique.
 
-The current workflows support multiple payment records per membership but do not expose partial-payment balance logic. Keeping one row per payment preserves history and allows multiple payments. If one transaction must allocate money across several memberships or invoices, introduce `payment_allocations` rather than changing `payments`.
+The current workflows support multiple payment records per membership but do not expose partial-payment balance logic. Keeping one row per payment preserves history and allows multiple payments. Walk-in fees remain a separate transaction type and must not be treated as membership payment obligations. Refunds, voids, discounts, taxes, and allocation rules are unresolved and must not be inferred from this proposal.
 
 ### `rfid_keyfobs` and `rfid_assignments`
 
@@ -257,7 +260,21 @@ Purpose: retain the physical keyfob and its assignment history separately.
 | `ended_reason` | `varchar(80)` | no | Replacement, deactivation, loss, or other confirmed reason. |
 | `assigned_by_user_id` | `uuid` | yes | FK to `users`. |
 
-Constraints: at most one active assignment per keyfob; optionally at most one active keyfob per customer and branch. Index (`customer_id`, `ended_at`), (`keyfob_id`, `ended_at`), and (`branch_id`, `ended_at`). This preserves reassignment and replacement history instead of overwriting `customer` and `date` on one row.
+Constraints: at most one active assignment per keyfob; a customer may hold multiple active keyfobs. A deactivated UID may be reassigned to another customer, but the prior assignment must remain historical. Index (`customer_id`, `ended_at`), (`keyfob_id`, `ended_at`), and (`branch_id`, `ended_at`). This preserves reassignment and replacement history instead of overwriting `customer` and `date` on one row.
+
+### `scanners` (expected future entity)
+
+Purpose: identify the branch and function associated with scanner-generated events. Each branch is expected to have an attendance scanner and a separate keyfob-assignment scanner.
+
+| Column | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | `uuid` | yes | Primary key. |
+| `branch_id` | `uuid` | yes | FK to `branches`. |
+| `scanner_type` | `varchar(30)` | yes | `attendance` or `keyfob_assignment`. |
+| `device_id` | `varchar(160)` | no | Device identity; exact guarantee remains unresolved. |
+| `status` | `varchar(20)` | yes | Operational status. |
+
+The exact device identity and event-ID guarantees remain unresolved. A keyfob-assignment scan must never create attendance, and an attendance scan must never alter keyfob assignments.
 
 ### `attendance_visits` and `attendance_events`
 
@@ -296,6 +313,12 @@ Unique constraints: (`source`, `device_event_id`) when a device ID exists; other
 
 The prototype currently stores one `VisitRecord` with `timeIn`, `timeOut`, `source`, and sync state. The event table is a future-facing separation that preserves distinct time-in/time-out submissions and retry history.
 
+Attendance business workflow: the first valid attendance scan creates time-in for the member's `Asia/Manila` business day. The system checks for an open session; the next valid scan closes that session as time-out. After closure, a later scan may create a new session on the same business day. A transaction and partial unique constraint must prevent conflicting open sessions, while duplicate or repeated scanner events must be idempotently detected or retained for review rather than silently creating incorrect records.
+
+Authorized Admin and Front Desk users may manually create attendance by selecting an existing customer and applicable branch, recording the business date, time-in, optional time-out, note/reason, and responsible staff member. Staff may add a missing time-out, correct date/time values, or void an invalid record. Manual and RFID attendance use the same logical visit model. Corrections must append an audit event containing the original values, new values, affected record, actor, timestamp, and reason when required; voiding must not delete the original record. Duplicate-scan cooldown and approval requirements for a second same-day session remain unresolved.
+
+Each branch is expected to have two separate scanner functions: an attendance scanner and a keyfob-assignment scanner. Assignment scans must never create attendance, and attendance scans must never create or alter keyfob assignments. Both attendance events and assignment events should identify their branch and scanner. Exact device identity, event-ID, duplicate detection, and resend guarantees remain unresolved.
+
 ### `walk_ins`
 
 Purpose: branch walk-in registration and its manually recorded fee/payment state.
@@ -332,8 +355,9 @@ Purpose: public profile-registration requests awaiting Front Desk review.
 | `reviewed_by_user_id` | `uuid` | no | FK to `users`. |
 | `reviewed_at` | `timestamptz` | no | Null while unresolved. |
 | `correction_note` | `text` | no | Present when returned for correction. |
+| `expires_at` | `timestamptz` | yes | Public submission expiration; exact duration remains unresolved. |
 
-Primary key: `id`; unique index on `reference`; index (`branch_id`, `status`, `submitted_at`) and (`phone_normalized`, `status`). The current `possibleCustomerIds` array should generally be derived by a phone search. If the review process must preserve every candidate seen at submission time, add `qr_registration_matches(submission_id, customer_id, match_reason, created_at)`.
+Primary key: `id`; unique index on `reference`; index (`branch_id`, `status`, `submitted_at`, `expires_at`) and (`phone_normalized`, `status`). Processing must reject rows whose `expires_at` has passed. The current `possibleCustomerIds` array should generally be derived by a phone search. If the review process must preserve every candidate seen at submission time, add `qr_registration_matches(submission_id, customer_id, match_reason, created_at)`. Expiration duration, rate limiting, and identity verification remain unresolved.
 
 ### `audit_logs`
 
@@ -354,15 +378,21 @@ Purpose: immutable operational and administrative history.
 
 Index (`occurred_at`), (`actor_user_id`, `occurred_at`), (`branch_id`, `occurred_at`), and (`affected_table`, `affected_id`). Audit rows should be append-only; corrections should create a new audit event rather than rewrite the original.
 
+Audit coverage is required for manual attendance creation; attendance time-in/time-out and date corrections; attendance voids; RFID assignment, deactivation, and reassignment; membership activation, deactivation, and renewal; payment status changes and relevant corrections; Front Desk branch-assignment and permission changes; public QR submission processing; and system-generated actions that affect business records. Automated actions should use a dedicated system actor or an explicitly marked system source. Public submissions must remain distinguishable from staff and system actions. Final nullable-actor handling for anonymous public events is unresolved.
+
+### Timezone and business date
+
+Use `Asia/Manila` as the business timezone. The business day runs from midnight to midnight in that timezone. Store event timestamps consistently as timezone-aware instants, derive attendance dates and daily reports using the business timezone, and test events around midnight so they are not assigned to the wrong business day. Branch membership, attendance, and reporting logic must not rely on formatted display strings.
+
 ## Relationships and modeling decisions
 
 ### Membership history and renewals
 
-The current prototype can update a membership's status, end date, and payment state in place. A database should not lose old terms when a customer renews or changes plans. The recommended minimum is one `memberships` row per term with `renewed_from_id`; payments reference the exact term. An alternative is a stable membership account plus `membership_periods`, but that adds an entity not currently required by the UI.
+The current prototype can update a membership's status, end date, and payment state in place. The preferred business workflow is to extend the existing membership record during monthly renewal, but a database must not lose old dates or financial history. Payment rows remain immutable and membership-date changes need an approved history mechanism. A separate `membership_periods` table, append-only change history, or equivalent may be necessary; this model choice remains unresolved.
 
 ### Payment history and partial payments
 
-The current context stores a separate payment record for each manual payment and marks the membership paid. It does not calculate outstanding balances or support payment allocation. The proposed `payments` table supports multiple and partial payments by keeping one amount per transaction. Before implementing, confirm whether a membership can remain active while partially paid, whether overpayments/refunds are needed, and whether walk-in fees should share the same ledger.
+The current context stores a separate payment record for each manual payment and marks the membership paid. It does not calculate outstanding balances or support payment allocation. The proposed `payments` table supports multiple records while membership activation still requires full payment. Partial or pending payment does not activate a membership. Refunds, voids, discounts, taxes, and payment allocation remain unresolved.
 
 ### Branch permissions
 
@@ -420,19 +450,17 @@ This phase does not implement offline support. If it is later required:
 | Audit time and affected record are display strings. | Normalized timestamp, actor FK, branch FK, affected entity/key, action code, and metadata. |
 | Dashboard branch totals and historical charts include seed/demo aggregates. | Derive authoritative operational totals from transactional tables and label unavoidable demo history. |
 
-## Unresolved business decisions
+## Unresolved Business Decisions
 
-1. Can a customer belong to multiple branches, or must there be one home branch?
-2. Is a phone number intended to be globally unique, branch-unique, or intentionally non-unique as the current ambiguous-match behavior allows?
-3. Should renewal create a new membership term, extend the existing row, or use a separate membership-period model?
-4. Can a membership be active with partial or pending payment? Are refunds, voids, discounts, and taxes needed?
-5. Should walk-in fees use the membership payment ledger or remain a separate transaction type?
-6. Can Front Desk users work at more than one branch, and can Admin users ever be restricted to selected branches?
-7. Can a deactivated RFID UID be reused, and can a customer hold multiple active keyfobs?
-8. Are scanner events received from one device per branch or multiple named devices? What device identity and event-id guarantees exist?
-9. Should public QR submissions expire, be rate-limited, or require additional identity verification?
-10. Which actions are mandatory audit events, and should system-generated/public events have a nullable actor or a dedicated system actor?
-11. What timezone and reporting cutoff should determine a branch's business date?
+The following items remain intentionally undecided and must not be resolved implicitly during implementation:
+
+1. Whether phone numbers and email addresses must be globally unique.
+2. Whether refunds, voids, discounts, and taxes are required and how they should behave.
+3. The exact public QR expiration duration, rate limits, and identity-verification requirements.
+4. The attendance duplicate-scan cooldown and whether a second same-day session requires staff approval.
+5. Scanner device IDs, event IDs, duplicate-event detection, and event resend guarantees.
+6. Whether anonymous public audit events use a nullable actor or a dedicated system actor with an explicit source field.
+7. Whether payment history and renewal-date changes are sufficient or a separate membership-period history table is required.
 
 ## Files inspected and deliverable
 

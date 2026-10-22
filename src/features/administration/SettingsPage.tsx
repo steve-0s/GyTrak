@@ -37,7 +37,7 @@ function readSettings(role: "Admin" | "Front Desk", accountId?: string): Display
 export default function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: Props) {
   const { role } = useAuth();
   const isAdmin = role === "Admin";
-  const { servicePrices, upsertServicePrice } = useGymData();
+  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings } = useGymData();
   const [initialSettings] = useState(() => readSettings(role, account?.id));
   const [name, setName] = useState(initialSettings.name);
   const [currency, setCurrency] = useState(initialSettings.currency);
@@ -53,6 +53,7 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
   const [securityError, setSecurityError] = useState("");
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceAmount, setNewServiceAmount] = useState("0");
+  const [reminders, setReminders] = useState(reminderSettings);
 
   const saveEmail = async () => {
     if (!onChangeEmail) return;
@@ -79,8 +80,10 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
   const saveSettings = () => {
     const key = isAdmin ? settingsKey : `${settingsKey}:${role}:${account?.id ?? "unknown"}`;
     localStorage.setItem(key, JSON.stringify({ name, currency, requireReason, notifications }));
+    if (isAdmin) updateReminderSettings(reminders);
     onAction("Settings saved");
   };
+  const resetReminders = () => setReminders(reminderSettings);
   const savePrice = (price: ServicePrice, amount: string, studentAmount: string) => {
     const value = Number(amount);
     const studentValue = studentAmount.trim() === "" ? undefined : Number(studentAmount);
@@ -129,6 +132,10 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
               <Toggle label="Show non-critical in-app reminders" checked={notifications} setChecked={setNotifications} />
               <p className="mt-3 text-xs text-[var(--text-muted)]">Important validation errors and scanner synchronization failures are always shown.</p>
             </Panel>
+            <Panel title="Membership reminders">
+              <p className="text-xs text-[var(--text-muted)]">Global reminder settings are managed by an Admin. You can view and use reminders for your assigned branch.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3"><Info label="Automatic simulation" value={reminderSettings.enabled ? "Enabled" : "Disabled"} /><Info label="Channels" value={[reminderSettings.channels.email ? "Email" : "", reminderSettings.channels.sms ? "SMS" : ""].filter(Boolean).join(" · ") || "None"} /><Info label="Stages configured" value={String(reminderSettings.intervals.length)} /></div>
+            </Panel>
             <button onClick={saveSettings} className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]">Save settings</button>
           </>
         ) : (
@@ -145,6 +152,14 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
             <Panel title="Attendance preferences">
               <Toggle label="Require a reason for manual corrections" checked={requireReason} setChecked={setRequireReason} />
               <Toggle label="Show sync notifications" checked={notifications} setChecked={setNotifications} />
+            </Panel>
+            <Panel title="Membership reminders">
+              <p className="mb-4 text-xs text-[var(--text-muted)]">Automatic reminders are simulated only while this application is open. They never send real email or SMS.</p>
+              <Toggle label="Enable simulated automatic reminders" checked={reminders.enabled} setChecked={(value) => isAdmin && setReminders({ ...reminders, enabled: value })} />
+              <div className="grid gap-4 border-b border-[var(--border)] py-4 sm:grid-cols-2"><Toggle label="Simulate email channel" checked={reminders.channels.email} setChecked={(value) => isAdmin && setReminders({ ...reminders, channels: { ...reminders.channels, email: value } })} /><Toggle label="Simulate SMS channel" checked={reminders.channels.sms} setChecked={(value) => isAdmin && setReminders({ ...reminders, channels: { ...reminders.channels, sms: value } })} /></div>
+              <p className="mb-2 mt-4 text-xs font-medium">Reminder stages</p><div className="flex flex-wrap gap-2">{[[7, "7 days before"], [3, "3 days before"], [0, "Due date"], [-1, "1 day after"], [-3, "3 days after"]].map(([value, label]) => <label key={String(value)} className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs"><input type="checkbox" disabled={!isAdmin} checked={reminders.intervals.includes(Number(value))} onChange={() => setReminders({ ...reminders, intervals: reminders.intervals.includes(Number(value)) ? reminders.intervals.filter((item) => item !== Number(value)) : [...reminders.intervals, Number(value)] })} />{label}</label>)}</div>
+              <div className="mt-4 grid gap-4"><TextField label="Gym contact shown in messages" value={reminders.gymContact} onChange={(value) => isAdmin && setReminders({ ...reminders, gymContact: value })} placeholder="Phone, email, or front desk" /><label className="block"><span className="mb-1.5 block text-xs font-medium">Email template</span><textarea disabled={!isAdmin} value={reminders.emailTemplate} onChange={(e) => setReminders({ ...reminders, emailTemplate: e.target.value })} className="min-h-24 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="block"><span className="mb-1.5 block text-xs font-medium">SMS template</span><textarea disabled={!isAdmin} value={reminders.smsTemplate} onChange={(e) => setReminders({ ...reminders, smsTemplate: e.target.value })} className="min-h-20 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label></div>
+              {isAdmin && <div className="mt-3 flex gap-2"><button onClick={resetReminders} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">Reset reminder settings</button><span className="self-center text-xs text-[var(--text-muted)]">Placeholders: member_name, membership_plan, due_date, gym_contact</span></div>}
             </Panel>
             <Panel title="Service pricing">
               <p className="mb-4 text-xs text-[var(--text-muted)]">Prices apply to new transactions. Recorded payment amounts are not changed when a rate is updated.</p>

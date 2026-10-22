@@ -7,6 +7,8 @@ import {
   Plus,
   Search,
   UserRound,
+  ImagePlus,
+  Trash2,
 } from "lucide-react";
 import { createMockId } from "../../services/mockApi";
 import FilterSelect from "../../components/shared/FilterSelect";
@@ -26,6 +28,7 @@ type Customer = {
   plan?: string;
   endDate?: string;
   keyfob?: string;
+  photo?: string;
 };
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void; openCreateSignal?: number };
 
@@ -138,7 +141,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
           </p>
         </div>
         <div className="flex gap-2">
-          <button
+                        <button
             onClick={() => exportCustomers(visible)}
             className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block"
           >
@@ -273,7 +276,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                       onClick={(event) => { event.stopPropagation(); setSelectedId(customer.id); }}
                       className="font-semibold hover:text-[var(--accent)]"
                     >
-                      {customer.name}
+                      <span className="inline-flex items-center gap-2"><CustomerAvatar customer={customer} size="sm" />{customer.name}</span>
                     </button>
                   </td>
                   <td className="px-5 py-4 text-[var(--text-muted)]">
@@ -401,14 +404,13 @@ function CustomerDetails({
         <ArrowLeft size={16} /> Back to customers
       </button>
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-        <div>
-          <p className="mb-1 font-mono text-xs text-[var(--text-muted)]">
-            {customer.id}
-          </p>
-          <h2 className="text-2xl font-bold tracking-tight">{customer.name}</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Registered {customer.registered} · {customer.branch}
-          </p>
+        <div className="flex min-w-0 items-center gap-4">
+          <CustomerAvatar customer={customer} size="lg" />
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">{customer.name}</h2>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">{customer.id} · {customer.type} · {customer.status}</p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Registered {customer.registered} · {customer.branch}</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
@@ -431,9 +433,7 @@ function CustomerDetails({
         <div className="space-y-5">
           <InfoSection title="Profile">
             <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent-subtle)] text-[var(--accent)]">
-                <UserRound size={19} />
-              </div>
+              <CustomerAvatar customer={customer} size="md" />
               <div>
                 <p className="font-semibold">{customer.name}</p>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -467,6 +467,11 @@ function CustomerDetails({
                 {customer.status}
               </span>
             </div>
+            {customer.plan && (
+              <button onClick={() => onAction("Membership reminders opened")} className="mt-3 block text-xs font-semibold text-[var(--accent)]">
+                Send membership reminder
+              </button>
+            )}
             {customer.plan && (
               <button
                 onClick={() => onAction("Membership details opened")}
@@ -571,6 +576,34 @@ function CustomerDetails({
   );
 }
 
+function CustomerAvatar({ customer, size = "md" }: { customer: Pick<Customer, "name" | "photo">; size?: "sm" | "md" | "lg" }) {
+  const dimensions = size === "lg" ? "h-16 w-16 text-lg" : size === "sm" ? "h-8 w-8 text-[10px]" : "h-10 w-10 text-xs";
+  const initials = customer.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+  return <div className={`grid shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--accent-subtle)] font-bold text-[var(--accent)] ${dimensions}`} aria-label={`${customer.name} profile photo`}>{customer.photo ? <img src={customer.photo} alt="" className="h-full w-full object-cover" /> : <span>{initials}</span>}</div>;
+}
+
+function resizePhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Unable to read image"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Unable to decode image"));
+      image.onload = () => {
+        const max = 256;
+        const scale = Math.min(1, max / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function InfoSection({
   title,
   children,
@@ -639,6 +672,13 @@ function CustomerForm({
       registered: form.registered || "Today",
     });
   };
+  const handlePhoto = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return setError("Choose a JPG, PNG, or WebP image.");
+    if (file.size > 5 * 1024 * 1024) return setError("Photo must be 5 MB or smaller.");
+    try { setError(""); const photo = await resizePhoto(file); setForm((current) => ({ ...current, photo })); }
+    catch { setError("The selected photo could not be processed. Try another image."); }
+  };
   return (
     <div className="mx-auto max-w-3xl">
       <button
@@ -660,6 +700,12 @@ function CustomerForm({
         </p>
       </div>
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6">
+        <div className="mb-5 flex flex-wrap items-center gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4">
+          <CustomerAvatar customer={form} size="lg" />
+          <div className="min-w-[180px] flex-1"><p className="text-sm font-semibold">Profile photo</p><p className="mt-1 text-xs text-[var(--text-muted)]">Optional. JPG, PNG, or WebP · maximum 5 MB. Images are resized for this browser prototype.</p></div>
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface)]"><ImagePlus size={15} />{form.photo ? "Replace photo" : "Upload photo"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void handlePhoto(event.target.files?.[0])} /></label>
+          {form.photo && <button type="button" onClick={() => setForm((current) => ({ ...current, photo: undefined }))} className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700"><Trash2 size={14} />Remove</button>}
+        </div>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field
             label="Full name"

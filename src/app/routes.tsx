@@ -8,6 +8,7 @@ export const appRoutes: RouteMeta[] = [
   { label: "Dashboard", path: "/", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Overview", icon: "LayoutDashboard" },
   { label: "Customers", path: "/customers", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Users" },
   { label: "Walk-ins & Memberships", path: "/walk-ins-memberships", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "CreditCard" },
+  { label: "Membership Reminders", path: "/membership-reminders", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Bell" },
   { label: "Coaches", path: "/coaches", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Dumbbell" },
   { label: "Attendance", path: "/attendance", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "CalendarCheck" },
   { label: "RFID Keyfobs", path: "/rfid-keyfobs", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Operations", icon: "Radio" },

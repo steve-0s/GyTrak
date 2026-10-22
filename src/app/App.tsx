@@ -49,6 +49,7 @@ import QRRegistrationPage from "../shared/screens/QRRegistrationScreen";
 import QRSettingsPage from "../roles/admin/screens/QRSettingsScreen";
 import SettingsPage from "../roles/admin/screens/SettingsScreen";
 import CoachesPage from "../roles/front-desk/screens/CoachesScreen";
+import MembershipRemindersPage from "../features/reminders/MembershipRemindersPage";
 import { ForgotPasswordPage, InitialSetupPage, LoginPage } from "../shared/screens/AuthScreens";
 import {
   activity,
@@ -79,6 +80,7 @@ const icons = {
   ClipboardList,
   Settings,
   ScanLine,
+  Bell,
 };
 
 function App() {
@@ -142,6 +144,7 @@ function App() {
       ["Walk-in registration opened", "Walk-ins & Memberships"],
       ["Memberships opened", "Walk-ins & Memberships"],
       ["Expiring memberships opened", "Walk-ins & Memberships"],
+      ["Membership reminders opened", "Membership Reminders"],
       ["Keyfob assignment opened", "RFID Keyfobs"],
       ["Front Desk account list opened", "Front Desk Accounts"],
       ["Branch details opened", "Branches"],
@@ -154,6 +157,7 @@ function App() {
     if (message.endsWith(" payment follow-up opened")) selectPage("Walk-ins & Memberships");
     if (message.endsWith(" details opened")) selectPage("Branches");
     if (message === "Memberships expiring soon opened") selectPage("Walk-ins & Memberships");
+    if (message === "Membership reminders opened") selectPage("Membership Reminders");
     if (message === "Pending registrations opened") selectPage("Customers");
     if (message === "Sync queue opened") selectPage("Scanner and Sync Status");
     const destination = destinations.find(([trigger]) => message === trigger)?.[1];
@@ -331,6 +335,8 @@ function App() {
               initialView="walkins"
               openWalkInSignal={walkInCreateSignal}
             />
+          ) : currentPage === "Membership Reminders" ? (
+            <MembershipRemindersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Attendance" ? (
             <AttendancePage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "RFID Keyfobs" ? (

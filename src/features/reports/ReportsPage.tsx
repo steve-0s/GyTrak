@@ -21,7 +21,7 @@ import { useGymData } from "../../contexts/GymDataContext";
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
 export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { branches: branchRecords, customers, visits, walkIns, memberships, payments, coaches, frontDeskAccounts, auditLogs } = useGymData();
+  const { branches: branchRecords, customers, visits, walkIns, memberships, payments, coaches, frontDeskAccounts, auditLogs, reminderRecords } = useGymData();
   const branches = ["All branches", ...branchRecords.map((item) => item.name)];
   const [category, setCategory] = useState("Overview");
   const [range, setRange] = useState("Last 7 days");
@@ -120,7 +120,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
             onChange={(event) => setCategory(event.target.value)}
             className="bg-transparent text-xs font-medium outline-none"
           >
-            <option>Overview</option><option>Financial</option><option>Memberships</option><option>Attendance</option><option>Customers &amp; Sales</option><option>Coaches &amp; Staff</option><option>Operations</option><option>Branch Comparison</option>
+            <option>Overview</option><option>Financial</option><option>Memberships</option><option>Membership reminders</option><option>Attendance</option><option>Customers &amp; Sales</option><option>Coaches &amp; Staff</option><option>Operations</option><option>Branch Comparison</option>
           </select>
         </label>
         <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
@@ -159,6 +159,8 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
         <BranchReport rows={selectedBranch} query={query} setQuery={setQuery} />
       ) : category === "Memberships" ? (
         <MembershipReport membershipStatus={membershipStatus} planData={planData} />
+      ) : category === "Membership reminders" ? (
+        <ReminderReport memberships={scopedMemberships} customers={customers} records={reminderRecords.filter((record) => branch === "All branches" || record.branch === branch)} />
       ) : category === "Attendance" ? (
         <ActualAttendanceReport data={attendanceTrend} visits={scopedAttendance} />
       ) : category === "Customers & Sales" ? (
@@ -210,6 +212,7 @@ function ActualAttendanceReport({ data, visits }: { data: Array<{ day: string; v
 }
 function durationMinutes(start: string, end: string) { if (!start || !end || end === "—" || start === "—" || start === "Not checked in") return null; const parse = (value: string) => { const match = value.match(/(\d+):(\d+)\s*(AM|PM)/i); if (!match) return null; let hour = Number(match[1]) % 12; if (match[3].toUpperCase() === "PM") hour += 12; return hour * 60 + Number(match[2]); }; const a = parse(start); const b = parse(end); return a === null || b === null || b < a ? null : b - a; }
 function CustomerSalesReport({ customers, walkIns, payments }: { customers: Array<{ name: string; branch: string; type: string; classification?: string; lastVisit: string }>; walkIns: Array<{ customer: string; branch: string; payment: string; fee: number }>; payments: Array<{ amount: number; category?: string }> }) { return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Customers" value={String(customers.length)} /><Metric label="Walk-in visits" value={String(walkIns.length)} /><Metric label="Walk-in collections" value={php(payments.filter((item) => (item.category ?? "Membership") === "Walk-in").reduce((sum, item) => sum + item.amount, 0))} /></div><ReportTable title="Customer directory" columns={["Customer", "Branch", "Type", "Category", "Last visit"]} rows={customers.map((item) => [item.name, item.branch, item.type, item.classification ?? "Not recorded", item.lastVisit])} /></>; }
+function ReminderReport({ memberships, customers, records }: { memberships: Array<{ customer: string; customerId: string; branch: string; end: string }>; customers: Array<{ id: string; email: string; phone: string }>; records: Array<{ customerId: string; source: string; channel: string; status: string; attemptedAt: string }> }) { const upcoming = memberships.filter((m) => { const d = new Date(m.end).getTime() - new Date().setHours(0, 0, 0, 0); return d >= 0 && d <= 7 * 86400000; }).length; const overdue = memberships.filter((m) => new Date(m.end).getTime() < new Date().setHours(0, 0, 0, 0)).length; const missing = memberships.filter((m) => { const c = customers.find((x) => x.id === m.customerId); return !c?.email && !c?.phone; }).length; return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Expiring / due soon" value={String(upcoming)} /><Metric label="Overdue follow-up" value={String(overdue)} /><Metric label="Missing contact" value={String(missing)} /></div><ReportTable title="Reminder attempts (simulated, not delivery proof)" columns={["Source", "Channel", "Status", "Attempted"]} rows={records.map((r) => [r.source, r.channel, r.status, new Date(r.attemptedAt).toLocaleDateString("en-PH")])} /></>; }
 function StaffReport({ coaches, accounts, payments }: { coaches: Array<{ name: string; branch: string; specialty: string }>; accounts: Array<{ name: string; branch: string; status: string }>; payments: Array<{ category?: string }> }) { return <><div className="mb-5 grid gap-3 sm:grid-cols-3"><Metric label="Coaches" value={String(coaches.length)} /><Metric label="Front Desk accounts" value={String(accounts.length)} /><Metric label="Attributed coaching revenue" value={php(payments.filter((item) => item.category === "Coaching").length ? 0 : 0)} /></div><ReportTable title="Coach directory" columns={["Coach", "Branch", "Specialty"]} rows={coaches.map((item) => [item.name, item.branch, item.specialty])} /><p className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-[var(--text-muted)]">Coach-linked sessions, staff hours, payroll, commissions, and attributed revenue are not tracked by the current prototype.</p></>; }
 
 function AttendanceReport({
