@@ -19,8 +19,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { branchAnalytics, branches as branchRecords, membershipDueNotifications, membershipStatus } from "../../data/mockData";
+import { branchAnalytics } from "../../data/mockData";
 import PeakActivityCard from "../../components/shared/PeakActivityCard";
+import { useGymData } from "../../contexts/GymDataContext";
+import { membershipDueState } from "../../lib/membership";
 
 type Props = { onAction: (message: string) => void };
 
@@ -29,23 +31,19 @@ const rangeOptions = [
   { value: "30d", label: "Last 30 days", factor: 3.8 },
   { value: "90d", label: "Last 90 days", factor: 11.2 },
 ];
-const branches = ["All Branches", ...branchRecords.map((branch) => branch.name)];
-const branchRows = branchRecords
-  .filter((branch) => branch.status === "Active")
-  .map((branch) => ({
-    branch: branch.name,
-    customers: branch.customers,
-    visits: branch.visits,
-    unique: Math.round(branch.visits * 0.76),
-    memberships: branch.memberships,
-    walkIns: branch.name === "Makati Central" ? 42 : branch.name === "BGC High Street" ? 29 : 17,
-    revenue: branch.revenue,
-    expiring: branch.name === "Makati Central" ? 18 : branch.name === "BGC High Street" ? 11 : 8,
-  }));
 const formatPHP = (value: number) => `₱${value.toLocaleString("en-PH")}`;
 const formatNumber = (value: number) => value.toLocaleString("en-PH");
 
 export default function AdminDashboardPage({ onAction }: Props) {
+  const { branches: branchRecords, customers, memberships, visits, walkIns, payments } = useGymData();
+  const branches = ["All Branches", ...branchRecords.map((item) => item.name)];
+  const branchRows = useMemo(() => branchRecords.filter((item) => item.status === "Active").map((item) => {
+    const branchVisits = visits.filter((visit) => visit.branch === item.name);
+    const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name);
+    const branchMemberships = memberships.filter((membership) => membership.branch === item.name);
+    return { branch: item.name, customers: customers.filter((customer) => customer.branch === item.name).length, visits: branchVisits.length, unique: new Set(branchVisits.map((visit) => visit.customerId)).size, memberships: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: payments.filter((payment) => branchMemberships.some((membership) => membership.id === payment.membershipId)).reduce((sum, payment) => sum + payment.amount, 0), expiring: branchMemberships.filter((membership) => { const key = membershipDueState(membership.end).key; return key === "soon" || key === "today"; }).length };
+  }), [branchRecords, customers, memberships, visits, walkIns, payments]);
+  const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: memberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
   const [branch, setBranch] = useState("All Branches");
   const [range, setRange] = useState("7d");
   const selectedRange =
@@ -77,10 +75,7 @@ export default function AdminDashboardPage({ onAction }: Props) {
       ),
     [visibleBranches],
   );
-  const dueMemberships = membershipDueNotifications.filter(
-    (item) => branch === "All Branches" || item.branch === branch,
-  );
-  const expiringSoon = dueMemberships.filter((item) => item.key === "soon" || item.key === "today").length;
+  const expiringSoon = visibleBranches.reduce((sum, row) => sum + row.expiring, 0);
   const cards = [
     [
       "Total customers",

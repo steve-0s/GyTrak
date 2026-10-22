@@ -30,6 +30,19 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const accountsKey = "gytrak-mock-accounts";
 const sessionKey = "gytrak-mock-session";
+// TEMPORARY WORKFLOW TESTING ONLY: keep the prototype usable without credentials.
+// Remove this flag and the fallback account before introducing real authentication.
+const AUTH_BYPASS_FOR_WORKFLOW_TESTING = true;
+const workflowTestingAccount: AuthAccount = {
+  id: "ACC-WORKFLOW-TEST",
+  name: "Workflow Tester",
+  email: "workflow.tester@gytrak.test",
+  role: "Admin",
+  branch: "All branches",
+  status: "Active",
+  emailVerified: true,
+  passwordHash: "workflow-testing-only",
+};
 
 function readAccounts(): AuthAccount[] {
   try {
@@ -53,7 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<AuthAccount[]>(readAccounts);
   const [accountId, setAccountId] = useState<string | null>(() => localStorage.getItem(sessionKey));
   const [developmentRole, setDevelopmentRole] = useState<Role | null>(null);
-  const account = accounts.find((item) => item.id === accountId) ?? null;
+  const baseAccount = accounts.find((item) => item.id === accountId) ?? (AUTH_BYPASS_FOR_WORKFLOW_TESTING ? workflowTestingAccount : null);
+  const activeRole = developmentRole ?? baseAccount?.role ?? "Admin";
+  const account = baseAccount && activeRole === "Front Desk" && baseAccount.branch === "All branches"
+    ? { ...baseAccount, role: "Front Desk" as const, branch: "Makati Central" }
+    : baseAccount;
 
   const login = async (email: string, password: string) => {
     const match = accounts.find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
@@ -106,8 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (newEmail.trim().toLowerCase() !== confirmation.trim().toLowerCase()) return "Email addresses do not match.";
     if (!/^\S+@\S+\.\S+$/.test(newEmail)) return "Enter a valid email address.";
     if (accounts.some((item) => item.id !== account.id && item.email.toLowerCase() === newEmail.toLowerCase())) return "That email is already in use.";
-    if (await hashPassword(currentPassword) !== account.passwordHash) return "The current password is incorrect.";
-    const next = accounts.map((item) => item.id === account.id ? { ...item, email: newEmail.trim(), emailVerified: false } : item);
+    if (!(AUTH_BYPASS_FOR_WORKFLOW_TESTING && account.id === workflowTestingAccount.id) && await hashPassword(currentPassword) !== account.passwordHash) return "The current password is incorrect.";
+    const next = accounts.some((item) => item.id === account.id)
+      ? accounts.map((item) => item.id === account.id ? { ...item, email: newEmail.trim(), emailVerified: false } : item)
+      : [{ ...(account.id === workflowTestingAccount.id ? workflowTestingAccount : account), email: newEmail.trim(), emailVerified: false }];
     saveAccounts(next);
     setAccounts(next);
     return null;
@@ -115,11 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const changePassword = async (currentPassword: string, newPassword: string, confirmation: string) => {
     if (!account) return "You must be signed in.";
-    if (await hashPassword(currentPassword) !== account.passwordHash) return "The current password is incorrect.";
+    if (!(AUTH_BYPASS_FOR_WORKFLOW_TESTING && account.id === workflowTestingAccount.id) && await hashPassword(currentPassword) !== account.passwordHash) return "The current password is incorrect.";
     if (newPassword.length < 8) return "Use at least 8 characters for the new password.";
     if (newPassword !== confirmation) return "New passwords do not match.";
     const newPasswordHash = await hashPassword(newPassword);
-    const next = accounts.map((item) => item.id === account.id ? { ...item, passwordHash: newPasswordHash } : item);
+    const next = accounts.some((item) => item.id === account.id)
+      ? accounts.map((item) => item.id === account.id ? { ...item, passwordHash: newPasswordHash } : item)
+      : [{ ...(account.id === workflowTestingAccount.id ? workflowTestingAccount : account), passwordHash: newPasswordHash }];
     saveAccounts(next);
     setAccounts(next);
     return null;
@@ -131,12 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void email;
   };
 
-  const activeRole = developmentRole ?? account?.role ?? "Admin";
   const value = useMemo(() => ({
     account,
     role: activeRole,
     isAdmin: activeRole === "Admin",
-    isAuthenticated: Boolean(account),
+    isAuthenticated: AUTH_BYPASS_FOR_WORKFLOW_TESTING || Boolean(account),
     hasInitialAdmin: accounts.some((item) => item.role === "Admin"),
     login,
     setupAdmin,

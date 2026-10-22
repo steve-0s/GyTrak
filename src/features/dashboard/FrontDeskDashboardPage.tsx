@@ -16,17 +16,21 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { branchAnalytics, dashboardAttendance, dashboardWalkIns, membershipDueNotifications, memberships } from "../../data/mockData";
+import { branchAnalytics } from "../../data/mockData";
 import PeakActivityCard from "../../components/shared/PeakActivityCard";
+import { useGymData } from "../../contexts/GymDataContext";
+import { membershipDueState } from "../../lib/membership";
 
-type Props = { onAction: (message: string) => void };
-
-const attendanceRecords = dashboardAttendance.filter((record) => record.branch === "Makati Central");
-const walkIns = dashboardWalkIns.filter((visit) => visit.branch === "Makati Central");
+type Props = { branch?: string; onAction: (message: string) => void };
 
 const php = (amount: number) => `₱${amount.toLocaleString("en-PH")}`;
 
-export default function FrontDeskDashboardPage({ onAction }: Props) {
+export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makati Central", onAction }: Props) {
+  const { registrations, visits, walkIns, memberships } = useGymData();
+  const branch = assignedBranch;
+  const attendanceRecords = visits.filter((record) => record.branch === branch).map((record) => ({ customer: record.customer, branch: record.branch, in: record.timeIn, out: record.timeOut, type: record.type, source: record.source.startsWith("RFID") ? "RFID" : "Manual", status: record.status }));
+  const branchWalkIns = walkIns.filter((visit) => visit.branch === branch);
+  const analytics = branchAnalytics[branch as keyof typeof branchAnalytics] ?? branchAnalytics["Makati Central"];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [date, setDate] = useState("Today");
@@ -39,16 +43,16 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
       ),
     [search, status],
   );
-  const paidRevenue = walkIns
+  const paidRevenue = branchWalkIns
     .filter((visit) => visit.payment === "Paid")
     .reduce((total, visit) => total + visit.fee, 0);
-  const todayWalkIns = walkIns.filter((visit) => visit.date === "Oct 20, 2026");
+  const todayWalkIns = branchWalkIns.filter((visit) => visit.date === "Oct 20, 2026");
   const uniqueVisitors = new Set(attendanceRecords.map((record) => record.customer)).size;
-  const dueMemberships = membershipDueNotifications.filter((item) => item.branch === "Makati Central");
+  const dueMemberships = memberships.filter((item) => item.branch === branch && membershipDueState(item.end).key !== "upcoming");
   const stats = [
     ["Check-ins today", String(attendanceRecords.length), "Confirmed events"],
     ["Unique visitors", String(uniqueVisitors), "Distinct customers"],
-    ["Active members", String(memberships.filter((membership) => membership.status === "Active").length), "Assigned branch records"],
+    ["Active members", String(memberships.filter((membership) => membership.status === "Active" && membership.branch === branch).length), "Assigned branch records"],
     ["Walk-ins today", String(todayWalkIns.length), `${php(paidRevenue)} collected`],
     ["Payment follow-up", String(dueMemberships.length), "Manual reminders only"],
     ["Pending actions", String(attendanceRecords.filter((record) => record.status === "Checked in").length), "Open operational records"],
@@ -59,7 +63,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
       <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
-            Makati Central
+            {branch}
           </p>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Today’s branch activity and tasks.
@@ -102,7 +106,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
       </div>
 
       <div className="mt-6">
-        <PeakActivityCard branch="Makati Central" />
+        <PeakActivityCard branch={branch as keyof typeof branchAnalytics} />
       </div>
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
@@ -111,7 +115,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
             <div>
               <h3 className="font-semibold">Today’s Attendance</h3>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Confirmed check-ins by hour · Makati Central
+                Confirmed check-ins by hour · {branch}
               </p>
             </div>
             <span className="text-xs text-[var(--text-muted)]">Local time</span>
@@ -119,7 +123,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={branchAnalytics["Makati Central"].hourly}
+                data={analytics.hourly}
                 margin={{ top: 8, right: 4, left: -25, bottom: 0 }}
               >
                 <CartesianGrid
@@ -327,7 +331,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
             <div>
               <h3 className="font-semibold">Walk-in Activity</h3>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                {walkIns.length + 9} visits today · {php(paidRevenue)} collected
+                {branchWalkIns.length} visits today · {php(paidRevenue)} collected
               </p>
             </div>
             <button
@@ -348,13 +352,13 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {walkIns.map((visit) => (
+                {branchWalkIns.map((visit) => (
                   <tr key={visit.customer}>
                     <td className="px-5 py-3.5 font-medium">
                       {visit.customer}
                     </td>
                     <td className="px-5 py-3.5 text-[var(--text-muted)]">
-                      {visit.time}
+                      {visit.timeIn}
                     </td>
                     <td className="px-5 py-3.5">{php(visit.fee)}</td>
                     <td
@@ -384,7 +388,7 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
                 <div>
                   <p className="text-xs font-semibold">{item.customer}</p>
                   <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                    Due {item.dueDate} · {item.label}
+                    Due {item.end} · {membershipDueState(item.end).label}
                   </p>
                 </div>
                 <button
@@ -408,44 +412,18 @@ export default function FrontDeskDashboardPage({ onAction }: Props) {
             </p>
           </div>
           <span className="rounded-full bg-[var(--accent-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent)]">
-            2 pending
+            {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).length} pending
           </span>
         </div>
         <div className="grid gap-3 p-4 sm:grid-cols-2">
-          <div className="rounded-lg border border-[var(--border)] p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold">Jamie Lim</p>
-              <span className="text-[11px] text-amber-500">
-                Possible duplicate
-              </span>
+          {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).slice(0, 4).map((item) => (
+            <div key={item.id} className="rounded-lg border border-[var(--border)] p-3">
+              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{item.name}</p><span className="text-[11px] text-amber-500">{item.possibleCustomerIds.length ? "Possible duplicate" : item.status}</span></div>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">{item.reference} · {new Date(item.submittedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}</p>
+              <button onClick={() => onAction("Open QR Registrations from the navigation")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review submission</button>
             </div>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-              Submitted 08:37 AM · New registration
-            </p>
-            <button
-              onClick={() => onAction("Registration review opened")}
-              className="mt-3 text-xs font-semibold text-[var(--accent)]"
-            >
-              Review submission
-            </button>
-          </div>
-          <div className="rounded-lg border border-[var(--border)] p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold">Marco Tan</p>
-              <span className="text-[11px] text-[var(--text-muted)]">
-                Needs review
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-              Submitted 08:12 AM · New registration
-            </p>
-            <button
-              onClick={() => onAction("Registration review opened")}
-              className="mt-3 text-xs font-semibold text-[var(--accent)]"
-            >
-              Review submission
-            </button>
-          </div>
+          ))}
+          {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).length === 0 && <p className="p-3 text-xs text-[var(--text-muted)]">No profile registrations are waiting for review.</p>}
         </div>
       </section>
       <p className="mt-5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">

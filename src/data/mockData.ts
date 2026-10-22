@@ -2,10 +2,10 @@ export type { Role } from "../types"
 import { membershipDueState } from "../lib/membership"
 
 export const branches = [
-  { name: "Makati Central", location: "Makati City, Metro Manila", status: "Active", customers: 684, memberships: 512, visits: 348, revenue: 84240, frontDesk: 4 },
-  { name: "BGC High Street", location: "Taguig City, Metro Manila", status: "Active", customers: 716, memberships: 604, visits: 302, revenue: 73180, frontDesk: 3 },
-  { name: "Cebu IT Park", location: "Cebu City, Cebu", status: "Active", customers: 546, memberships: 448, visits: 198, revenue: 48620, frontDesk: 2 },
-  { name: "Quezon Avenue", location: "Quezon City, Metro Manila", status: "Inactive", customers: 0, memberships: 0, visits: 0, revenue: 0, frontDesk: 0 },
+  { id: "makati-central", name: "Makati Central", location: "Makati City, Metro Manila", status: "Active", customers: 684, memberships: 512, visits: 348, revenue: 84240, frontDesk: 4 },
+  { id: "bgc-high-street", name: "BGC High Street", location: "Taguig City, Metro Manila", status: "Active", customers: 716, memberships: 604, visits: 302, revenue: 73180, frontDesk: 3 },
+  { id: "cebu-it-park", name: "Cebu IT Park", location: "Cebu City, Cebu", status: "Active", customers: 546, memberships: 448, visits: 198, revenue: 48620, frontDesk: 2 },
+  { id: "quezon-avenue", name: "Quezon Avenue", location: "Quezon City, Metro Manila", status: "Inactive", customers: 0, memberships: 0, visits: 0, revenue: 0, frontDesk: 0 },
 ] as const
 
 export const customers = [
@@ -227,7 +227,6 @@ export const activity = [
     type: "member",
   },
 ];
-
 export const attendance = [
   {
     name: "Maya Santos",
@@ -274,61 +273,4 @@ export const chartData = [
   { day: "Fri", visits: 286 },
   { day: "Sat", visits: 348 },
   { day: "Sun", visits: 198 },
-];
-
-export const adminNavGroups = [
-  {
-    label: "Overview",
-    items: [{ label: "Dashboard", icon: "LayoutDashboard" }],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Customers", icon: "Users" },
-      { label: "Walk-ins & Memberships", icon: "CreditCard" },
-      { label: "Coaches", icon: "Dumbbell" },
-      { label: "Attendance", icon: "CalendarCheck" },
-      { label: "RFID Keyfobs", icon: "Radio" },
-    ],
-  },
-  {
-    label: "Business",
-    items: [
-      { label: "Branches", icon: "Building2" },
-      { label: "Reports", icon: "ChartNoAxesCombined" },
-    ],
-  },
-  {
-    label: "Administration",
-    items: [
-      { label: "Front Desk Accounts", icon: "UserCog" },
-      { label: "Audit Logs", icon: "ClipboardList" },
-      { label: "Settings", icon: "Settings" },
-    ],
-  },
-];
-
-export const frontDeskNavGroups = [
-  {
-    label: "Overview",
-    items: [{ label: "Dashboard", icon: "LayoutDashboard" }],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Customers", icon: "Users" },
-      { label: "Walk-ins & Memberships", icon: "CreditCard" },
-      { label: "Coaches", icon: "Dumbbell" },
-      { label: "Attendance", icon: "CalendarCheck" },
-      { label: "RFID Keyfobs", icon: "Radio" },
-    ],
-  },
-  {
-    label: "Monitoring",
-    items: [{ label: "Scanner and Sync Status", icon: "ScanLine" }],
-  },
-  {
-    label: "Reports",
-    items: [{ label: "Branch Reports", icon: "ChartNoAxesCombined" }],
-  },
 ];

@@ -15,37 +15,42 @@ import {
 } from "recharts";
 import { CalendarDays, Download, Search } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
-import { branchAnalytics, auditLogs, branchPerformance, branches as branchRecords, membershipStatus, planDistribution, visitRecords, walkIns } from "../../data/mockData";
+import { branchAnalytics } from "../../data/mockData";
+import { useGymData } from "../../contexts/GymDataContext";
 
-type Props = { isAdmin: boolean; onAction: (message: string) => void };
-const branches = ["All branches", ...branchRecords.map((branch) => branch.name)];
-const planData = planDistribution;
+type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
-export default function ReportsPage({ isAdmin, onAction }: Props) {
+export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
+  const { branches: branchRecords, visits, walkIns, memberships, payments, auditLogs } = useGymData();
+  const branches = ["All branches", ...branchRecords.map((item) => item.name)];
   const [category, setCategory] = useState("Attendance");
   const [range, setRange] = useState("Last 7 days");
   const [branch, setBranch] = useState(
-    isAdmin ? "All branches" : "Makati Central",
+    isAdmin ? "All branches" : assignedBranch,
   );
   const [query, setQuery] = useState("");
   const factor =
     range === "Last 7 days" ? 1 : range === "Last 30 days" ? 3.8 : 11.2;
-  const selectedBranch =
-    branch === "All branches"
-      ? branchPerformance
-      : branchPerformance.filter((item) => item.branch === branch);
+  const selectedBranch = branchRecords.filter((item) => item.status === "Active" && (branch === "All branches" || item.name === branch)).map((item) => {
+    const branchVisits = visits.filter((visit) => visit.branch === item.name);
+    const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name);
+    const branchMemberships = memberships.filter((membership) => membership.branch === item.name);
+    return { branch: item.name, visits: branchVisits.length, members: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: payments.filter((payment) => branchMemberships.some((membership) => membership.id === payment.membershipId)).reduce((sum, payment) => sum + payment.amount, 0) };
+  });
   const scopedWalkIns = walkIns.filter(
     (visit) => branch === "All branches" || visit.branch === branch,
   );
-  const scopedAttendance = visitRecords.filter(
+  const scopedAttendance = visits.filter(
     (event) => branch === "All branches" || event.branch === branch,
   );
   const reportMetrics = {
-    uniqueVisitors: new Set(scopedAttendance.map((event) => event.customer)).size,
+    uniqueVisitors: new Set(scopedAttendance.map((event) => event.customerId)).size,
     manualCorrections: auditLogs.filter(
       (log) => log.action === "Attendance correction" && (branch === "All branches" || log.branch === branch),
     ).length,
   };
+  const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: memberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
+  const planData = Array.from(new Set(memberships.map((membership) => membership.plan))).map((name) => ({ name, value: memberships.filter((membership) => membership.plan === name && membership.status === "Active").length }));
   const scopedTrend = branch === "All branches"
     ? Object.values(branchAnalytics).reduce(
         (combined, analytics) => combined.map((point, index) => ({
@@ -105,7 +110,7 @@ export default function ReportsPage({ isAdmin, onAction }: Props) {
       <div className="mb-6 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
-            {isAdmin ? "Business intelligence" : "Makati Central"}
+            {isAdmin ? "Business intelligence" : assignedBranch}
           </p>
           <h2 className="text-2xl font-bold tracking-tight">
             {isAdmin ? "Reports & Analytics" : "Branch Reports"}
@@ -161,14 +166,14 @@ export default function ReportsPage({ isAdmin, onAction }: Props) {
           </select>
         ) : (
           <span className="flex items-center rounded-lg bg-[var(--accent-subtle)] px-3 py-2 text-xs font-medium text-[var(--accent)]">
-            Assigned branch · Makati Central
+            Assigned branch · {assignedBranch}
           </span>
         )}
       </div>
       {category === "Branch performance" ? (
         <BranchReport rows={selectedBranch} query={query} setQuery={setQuery} />
       ) : category === "Memberships" ? (
-        <MembershipReport />
+        <MembershipReport membershipStatus={membershipStatus} planData={planData} />
       ) : category === "Walk-ins" ? (
         <WalkInReport summary={summary} visits={scopedWalkIns} />
       ) : category === "Revenue and payments" ? (
@@ -270,7 +275,7 @@ function AttendanceReport({
     </>
   );
 }
-function MembershipReport() {
+function MembershipReport({ membershipStatus, planData }: { membershipStatus: Array<{ name: string; value: number; color: string }>; planData: Array<{ name: string; value: number }> }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
       <Chart title="Membership status" subtitle="Current records by status">
@@ -348,7 +353,7 @@ function WalkInReport({
   visits,
 }: {
   summary: { walkIns: number; revenue: number };
-  visits: Array<(typeof walkIns)[number]>;
+  visits: Array<{ customerId: string; payment: "Paid" | "Pending"; fee: number }>;
 }) {
   const uniqueCustomers = new Set(visits.map((visit) => visit.customerId)).size;
   const paidVisits = visits.filter((visit) => visit.payment === "Paid");
@@ -412,7 +417,7 @@ function BranchReport({
   query,
   setQuery,
 }: {
-  rows: typeof branchPerformance;
+  rows: Array<{ branch: string; visits: number; members: number; walkIns: number; revenue: number }>;
   query: string;
   setQuery: (value: string) => void;
 }) {

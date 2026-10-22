@@ -1,27 +1,17 @@
 import { useMemo, useState } from "react";
 import { MoreHorizontal, Plus, Search } from "lucide-react";
-import { coaches as initialCoaches } from "../../data/mockData";
 import Modal from "../../components/shared/Modal";
+import { useGymData } from "../../contexts/GymDataContext";
+import type { Coach } from "../../types";
 
-type Coach = {
-  id: string;
-  name: string;
-  specialty: string;
-  branch: string;
-  status: "Active" | "Inactive";
-  phone: string;
-};
-
-type Props = { isAdmin: boolean; onAction: (message: string) => void };
+type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
 const emptyForm = { name: "", specialty: "", phone: "" };
 
-export default function CoachesPage({ isAdmin, onAction }: Props) {
-  const [coaches, setCoaches] = useState<Coach[]>(() =>
-    initialCoaches.map((coach) => ({ ...coach })),
-  );
+export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
+  const { coaches, upsertCoach, removeCoach } = useGymData();
   const [query, setQuery] = useState("");
-  const [branch, setBranch] = useState(isAdmin ? "All branches" : "Makati Central");
+  const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -56,26 +46,17 @@ export default function CoachesPage({ isAdmin, onAction }: Props) {
       return;
     }
     if (editing) {
-      setCoaches((current) =>
-        current.map((coach) =>
-          coach.id === editing.id
-            ? { ...coach, name: form.name.trim(), specialty: form.specialty.trim(), phone: form.phone.trim() || "—" }
-            : coach,
-        ),
-      );
+      upsertCoach({ ...editing, name: form.name.trim(), specialty: form.specialty.trim(), phone: form.phone.trim() || "—" });
       onAction("Coach updated");
     } else {
-      setCoaches((current) => [
-        {
-          id: `COA-${String(current.length + 30).padStart(3, "0")}`,
+      upsertCoach({
+          id: `COA-${String(Date.now()).slice(-3)}`,
           name: form.name.trim(),
           specialty: form.specialty.trim(),
-          branch: branch === "All branches" ? "Makati Central" : branch,
+          branch: branch === "All branches" ? assignedBranch : branch,
           status: "Active",
           phone: form.phone.trim() || "—",
-        },
-        ...current,
-      ]);
+        });
       onAction("Coach created");
     }
     setFormOpen(false);
@@ -84,18 +65,12 @@ export default function CoachesPage({ isAdmin, onAction }: Props) {
 
   const remove = (coach: Coach) => {
     if (!window.confirm(`Delete ${coach.name}? This prototype action cannot be undone.`)) return;
-    setCoaches((current) => current.filter((item) => item.id !== coach.id));
+    removeCoach(coach.id);
     onAction("Coach deleted");
   };
 
   const toggleStatus = (coach: Coach) => {
-    setCoaches((current) =>
-      current.map((item) =>
-        item.id === coach.id
-          ? { ...item, status: item.status === "Active" ? "Inactive" : "Active" }
-          : item,
-      ),
-    );
+    upsertCoach({ ...coach, status: coach.status === "Active" ? "Inactive" : "Active" });
     onAction(`Coach ${coach.status === "Active" ? "deactivated" : "activated"}`);
   };
 
@@ -103,7 +78,7 @@ export default function CoachesPage({ isAdmin, onAction }: Props) {
     <div>
       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="mb-1 text-sm font-medium text-[var(--accent)]">{isAdmin ? "All branches" : "Makati Central"}</p>
+          <p className="mb-1 text-sm font-medium text-[var(--accent)]">{isAdmin ? "All branches" : assignedBranch}</p>
           <h2 className="text-2xl font-bold">Coaches</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">Manage coach records and branch assignments.</p>
         </div>

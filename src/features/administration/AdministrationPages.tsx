@@ -9,8 +9,8 @@ import {
 import { formatPHP as php } from "../../lib/utils";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
-import { auditLogs as initialAuditRows, branches as initialBranches, frontDeskAccounts as initialAccounts } from "../../data/mockData";
-import type { AuthAccount } from "../../contexts/AuthContext";
+import { useGymData } from "../../contexts/GymDataContext";
+import { nextMockId } from "../../services/mockApi";
 
 type Branch = {
   name: string;
@@ -23,6 +23,7 @@ type Branch = {
   frontDesk: number;
 };
 type Account = {
+  id?: string;
   name: string;
   email: string;
   branch: string;
@@ -41,12 +42,7 @@ type Audit = {
 };
 type Props = {
   onAction: (message: string) => void;
-  initialView?: "branches" | "accounts" | "audit" | "settings";
-  theme: "light" | "dark";
-  onThemeChange: (theme: "light" | "dark") => void;
-  account?: AuthAccount | null;
-  onChangeEmail?: (email: string, confirmation: string, password: string) => Promise<string | null>;
-  onChangePassword?: (current: string, next: string, confirmation: string) => Promise<string | null>;
+  initialView?: "branches" | "accounts" | "audit";
 };
 
 const badge = (value: string) =>
@@ -57,15 +53,11 @@ const badge = (value: string) =>
 export default function AdministrationPages({
   onAction,
   initialView = "branches",
-  theme,
-  onThemeChange,
-  account,
-  onChangeEmail,
-  onChangePassword,
 }: Props) {
   const [view, setView] = useState(initialView);
-  const [branches, setBranches] = useState<Branch[]>(() => initialBranches.map((branch) => ({ ...branch })));
-  const [accounts, setAccounts] = useState<Account[]>(() => initialAccounts.map((account) => ({ ...account })));
+  const { branches: sharedBranches, frontDeskAccounts: sharedAccounts, auditLogs, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount } = useGymData();
+  const branches = sharedBranches;
+  const accounts = sharedAccounts;
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -85,13 +77,8 @@ export default function AdministrationPages({
         branch={editingBranch.name ? editingBranch : undefined}
         onBack={() => setEditingBranch(null)}
         onSave={(branch) => {
-          setBranches((current) =>
-            editingBranch.name
-              ? current.map((item) =>
-                  item.name === branch.name ? branch : item,
-                )
-              : [branch, ...current],
-          );
+          const existing = branches.find((item) => item.name === editingBranch.name);
+          upsertBranch({ ...branch, id: existing?.id ?? nextMockId("BR", 5) });
           setEditingBranch(null);
           onAction("Branch saved");
         }}
@@ -105,13 +92,8 @@ export default function AdministrationPages({
         account={editingAccount.email ? editingAccount : undefined}
         onBack={() => setEditingAccount(null)}
         onSave={(account) => {
-          setAccounts((current) =>
-            editingAccount.email
-              ? current.map((item) =>
-                  item.email === account.email ? account : item,
-                )
-              : [account, ...current],
-          );
+          const existing = accounts.find((item) => item.email === editingAccount.email);
+          upsertFrontDeskAccount({ ...account, id: existing?.id ?? nextMockId("FDA", 5) });
           setEditingAccount(null);
           onAction("Front Desk account saved");
         }}
@@ -130,18 +112,14 @@ export default function AdministrationPages({
               ? "Branches"
               : view === "accounts"
                 ? "Front Desk Accounts"
-                : view === "audit"
-                  ? "Audit Logs"
-                  : "Settings"}
+              : "Audit Logs"}
           </h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             {view === "branches"
               ? "Manage locations, branch status, and assigned staff."
               : view === "accounts"
                 ? "Manage branch operators and their access status."
-                : view === "audit"
-                  ? "Review traceable administrative and operational changes."
-                  : "Configure preferences for the GyTrak prototype."}
+                : "Review traceable administrative and operational changes."}
           </p>
         </div>
         {view === "branches" && (
@@ -191,9 +169,6 @@ export default function AdministrationPages({
         <Tab active={view === "audit"} onClick={() => setView("audit")}>
           Audit Logs
         </Tab>
-        <Tab active={view === "settings"} onClick={() => setView("settings")}>
-          Settings
-        </Tab>
       </div>
       {view === "branches" && (
         <BranchList
@@ -212,22 +187,12 @@ export default function AdministrationPages({
           setQuery={setQuery}
           onEdit={setEditingAccount}
           onToggle={(account) => {
-            setAccounts((current) =>
-              current.map((item) =>
-                item.email === account.email
-                  ? {
-                      ...item,
-                      status: item.status === "Active" ? "Inactive" : "Active",
-                    }
-                  : item,
-              ),
-            );
+            toggleFrontDeskAccount(account.id ?? "");
             onAction(`${account.name} status updated`);
           }}
         />
       )}
-      {view === "audit" && <AuditList query={query} setQuery={setQuery} />}
-      {view === "settings" && <SettingsPage onAction={onAction} theme={theme} onThemeChange={onThemeChange} account={account} onChangeEmail={onChangeEmail} onChangePassword={onChangePassword} />}
+      {view === "audit" && <AuditList rows={auditLogs} query={query} setQuery={setQuery} />}
     </div>
   );
 }
@@ -646,15 +611,17 @@ function AccountList({
 }
 
 function AuditList({
+  rows: auditRows,
   query,
   setQuery,
 }: {
+  rows: Audit[];
   query: string;
   setQuery: (value: string) => void;
 }) {
   const [action, setAction] = useState("All actions");
   const [branch, setBranch] = useState("All branches");
-  const rows = initialAuditRows.filter(
+  const rows = auditRows.filter(
     (row) =>
       `${row.user} ${row.record} ${row.summary}`
         .toLowerCase()
@@ -742,137 +709,6 @@ function AuditList({
   );
 }
 
-function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: { onAction: (message: string) => void; theme: "light" | "dark"; onThemeChange: (theme: "light" | "dark") => void; account?: AuthAccount | null; onChangeEmail?: (email: string, confirmation: string, password: string) => Promise<string | null>; onChangePassword?: (current: string, next: string, confirmation: string) => Promise<string | null> }) {
-  const [name, setName] = useState("GyTrak Fitness");
-  const [currency, setCurrency] = useState("PHP (₱)");
-  const [requireReason, setRequireReason] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [newEmail, setNewEmail] = useState(account?.email ?? "");
-  const [emailConfirmation, setEmailConfirmation] = useState("");
-  const [emailPassword, setEmailPassword] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [securityMessage, setSecurityMessage] = useState("");
-  const [securityError, setSecurityError] = useState("");
-  const saveEmail = async () => {
-    if (!onChangeEmail) return;
-    setSecurityError("");
-    const error = await onChangeEmail(newEmail, emailConfirmation, emailPassword);
-    if (error) setSecurityError(error); else { setSecurityMessage("Email updated. Verification is required before it is treated as verified."); setEmailPassword(""); }
-  };
-  const savePassword = async () => {
-    if (!onChangePassword) return;
-    setSecurityError("");
-    const error = await onChangePassword(currentPassword, newPassword, passwordConfirmation);
-    if (error) setSecurityError(error); else { setSecurityMessage("Password updated in the mock account store."); setCurrentPassword(""); setNewPassword(""); setPasswordConfirmation(""); }
-  };
-  return (
-    <div className="max-w-3xl space-y-5">
-      <InfoPanel title="Appearance">
-        <p className="mb-4 text-xs text-[var(--text-muted)]">Appearance is independent from role and persists across refreshes.</p>
-        <div className="flex gap-2">
-          <button onClick={() => onThemeChange("light")} className={`rounded-lg border px-4 py-2 text-sm ${theme === "light" ? "border-[var(--accent)] bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "border-[var(--border)]"}`}>Light</button>
-          <button onClick={() => onThemeChange("dark")} className={`rounded-lg border px-4 py-2 text-sm ${theme === "dark" ? "border-[var(--accent)] bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "border-[var(--border)]"}`}>Dark</button>
-        </div>
-      </InfoPanel>
-      <InfoPanel title="Business display">
-        <p className="mb-4 text-xs text-[var(--text-muted)]">
-          Displayed in the application header and exported reports.
-        </p>
-        <Field
-          label="Gym or business name"
-          value={name}
-          onChange={setName}
-          placeholder="Business name"
-        />
-      </InfoPanel>
-      <InfoPanel title="Regional formatting">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium">
-              Currency display
-            </span>
-            <Select
-              value={currency}
-              onChange={setCurrency}
-              options={["PHP (₱)", "USD ($)"]}
-            />
-          </label>
-          <div>
-            <p className="mb-2 text-xs font-medium">Date and time format</p>
-            <p className="rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm text-[var(--text-muted)]">
-              MMM DD, YYYY · 12-hour
-            </p>
-          </div>
-        </div>
-      </InfoPanel>
-      <InfoPanel title="Attendance preferences">
-        <Toggle
-          label="Require a reason for manual corrections"
-          checked={requireReason}
-          setChecked={setRequireReason}
-        />
-        <Toggle
-          label="Show sync notifications"
-          checked={notifications}
-          setChecked={setNotifications}
-        />
-      </InfoPanel>
-      <InfoPanel title="Account email">
-        <p className="mb-4 text-xs text-[var(--text-muted)]">Current account: {account?.email ?? "—"}. Email changes require your current password and would require verification in production.</p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="New email" value={newEmail} onChange={setNewEmail} placeholder="new-email@example.com" />
-          <Field label="Confirm new email" value={emailConfirmation} onChange={setEmailConfirmation} placeholder="Repeat new email" />
-          <PasswordField label="Current password" value={emailPassword} onChange={setEmailPassword} />
-        </div>
-        <button onClick={() => void saveEmail()} className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold">Update email</button>
-      </InfoPanel>
-      <InfoPanel title="Account password">
-        <p className="mb-4 text-xs text-[var(--text-muted)]">Use at least 8 characters. Passwords are hashed in this mock authentication layer and are never displayed.</p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <PasswordField label="Current password" value={currentPassword} onChange={setCurrentPassword} />
-          <PasswordField label="New password" value={newPassword} onChange={setNewPassword} />
-          <PasswordField label="Confirm new password" value={passwordConfirmation} onChange={setPasswordConfirmation} />
-        </div>
-        <button onClick={() => void savePassword()} className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold">Update password</button>
-      </InfoPanel>
-      {(securityError || securityMessage) && <p className={`rounded-lg px-3 py-2 text-xs ${securityError ? "bg-red-50 text-red-700" : "bg-[var(--accent-subtle)] text-[var(--accent)]"}`}>{securityError || securityMessage}</p>}
-      <button
-        onClick={() => onAction("Settings saved")}
-        className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"
-      >
-        Save settings
-      </button>
-    </div>
-  );
-}
-
-function PasswordField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  const [visible, setVisible] = useState(false);
-  return <label className="block"><span className="mb-1.5 block text-xs font-medium">{label}</span><div className="relative"><input type={visible ? "text" : "password"} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 pr-16 text-sm" /><button type="button" onClick={() => setVisible(!visible)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--accent)]">{visible ? "Hide" : "Show"}</button></div></label>;
-}
-
-function Toggle({
-  label,
-  checked,
-  setChecked,
-}: {
-  label: string;
-  checked: boolean;
-  setChecked: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center justify-between border-b border-[var(--border)] py-3 text-sm last:border-0">
-      <span>{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => setChecked(event.target.checked)}
-      />
-    </label>
-  );
-}
 function AccountForm({
   account,
   onBack,

@@ -34,31 +34,35 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import AdminDashboardPage from "../features/dashboard/AdminDashboardPage";
-import FrontDeskDashboardPage from "../features/dashboard/FrontDeskDashboardPage";
-import CustomersPage from "../features/customers/CustomersPage";
-import WalkInsMembershipsPage from "../features/walk-ins/WalkInsMembershipsPage";
-import AttendancePage from "../features/attendance/AttendancePage";
-import RFIDKeyfobsPage from "../features/rfid/RFIDKeyfobsPage";
-import ScannerSyncPage from "../features/scanner-sync/ScannerSyncPage";
-import AdministrationPages from "../features/administration/AdministrationPages";
-import ReportsPage from "../features/reports/ReportsPage";
-import QRRegistrationPage from "../features/registrations/QRRegistrationPage";
-import CoachesPage from "../features/coaches/CoachesPage";
-import { ForgotPasswordPage, InitialSetupPage, LoginPage } from "../features/auth/AuthPages";
+import AdminDashboardPage from "../roles/admin/screens/DashboardScreen";
+import FrontDeskDashboardPage from "../roles/front-desk/screens/DashboardScreen";
+import CustomersPage from "../roles/front-desk/screens/CustomersScreen";
+import WalkInsMembershipsPage from "../roles/front-desk/screens/WalkInsScreen";
+import AttendancePage from "../roles/front-desk/screens/AttendanceScreen";
+import RFIDKeyfobsPage from "../roles/front-desk/screens/RFIDScreen";
+import ScannerSyncPage from "../roles/front-desk/screens/ScannerSyncScreen";
+import BranchesScreen from "../roles/admin/screens/BranchesScreen";
+import StaffScreen from "../roles/admin/screens/StaffScreen";
+import AuditLogsScreen from "../roles/admin/screens/AuditLogsScreen";
+import ReportsPage from "../shared/screens/ReportsScreen";
+import QRRegistrationPage from "../shared/screens/QRRegistrationScreen";
+import QRRegistrationsPage from "../roles/front-desk/screens/QRRegistrationReviewScreen";
+import QRSettingsPage from "../roles/admin/screens/QRSettingsScreen";
+import SettingsPage from "../roles/admin/screens/SettingsScreen";
+import CoachesPage from "../roles/front-desk/screens/CoachesScreen";
+import { ForgotPasswordPage, InitialSetupPage, LoginPage } from "../shared/screens/AuthScreens";
 import {
   activity,
-  adminNavGroups,
   attendance,
   chartData,
   branches as branchRecords,
-  frontDeskNavGroups,
   mockMetrics,
 } from "../data/mockData";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
-import RoleLayout from "../layouts/RoleLayout";
-import PageContainer from "../components/layout/PageContainer";
+import RoleLayout from "../shared/layouts/RoleLayout";
+import PageContainer from "../shared/layouts/PageContainer";
+import { activePageFromPath, canAccessPage, getNavigationGroups, pagePaths, publicRoutes } from "./routes";
 
 const icons = {
   LayoutDashboard,
@@ -76,26 +80,6 @@ const icons = {
   ScanLine,
 };
 
-const pagePaths: Record<string, string> = {
-  Dashboard: "/",
-  Customers: "/customers",
-  Coaches: "/coaches",
-  "Walk-ins & Memberships": "/walk-ins-memberships",
-  Attendance: "/attendance",
-  "RFID Keyfobs": "/rfid-keyfobs",
-  "Scanner and Sync Status": "/scanner-sync",
-  Branches: "/branches",
-  "Front Desk Accounts": "/front-desk-accounts",
-  "Audit Logs": "/audit-logs",
-  Settings: "/settings",
-  Reports: "/reports",
-  "Branch Reports": "/branch-reports",
-};
-
-function activePageFromPath(pathname: string) {
-  return Object.entries(pagePaths).find(([, path]) => path === pathname)?.[0] ?? "Dashboard";
-}
-
 function App() {
   const { role, isAdmin, switchRole, isAuthenticated, account, signOut, changeEmail, changePassword } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -104,7 +88,10 @@ function App() {
   const [notice, setNotice] = useState("");
   const [now, setNow] = useState(() => new Date());
   const [headerVisible, setHeaderVisible] = useState(true);
-  const navGroups = isAdmin ? adminNavGroups : frontDeskNavGroups;
+  const [customerCreateSignal, setCustomerCreateSignal] = useState(0);
+  const [walkInCreateSignal, setWalkInCreateSignal] = useState(0);
+  const navGroups = getNavigationGroups(role, account?.branch);
+  const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2800);
@@ -136,9 +123,42 @@ function App() {
     setMenuOpen(false);
   };
   const selectPage = (page: string) => {
+    if (!canAccessPage(page, role, account?.branch)) return;
     setActive(page);
     window.history.pushState({}, "", pagePaths[page] ?? "/");
     setMenuOpen(false);
+  };
+  const handleAction = (message: string) => {
+    const destinations: Array<[string, string]> = [
+      ["New customer form opened", "Customers"],
+      ["Customers opened", "Customers"],
+      ["Attendance records opened", "Attendance"],
+      ["Attendance correction opened", "Attendance"],
+      ["Manual attendance form opened", "Attendance"],
+      ["Complete attendance page opened", "Attendance"],
+      ["Scanner status opened", "Scanner and Sync Status"],
+      ["Detailed sync status opened", "Scanner and Sync Status"],
+      ["Walk-in registration opened", "Walk-ins & Memberships"],
+      ["Memberships opened", "Walk-ins & Memberships"],
+      ["Expiring memberships opened", "Walk-ins & Memberships"],
+      ["Keyfob assignment opened", "RFID Keyfobs"],
+      ["Front Desk account list opened", "Front Desk Accounts"],
+      ["Branch details opened", "Branches"],
+      ["Activity log opened", "Audit Logs"],
+      ["Open QR Registrations from the navigation", "QR Registrations"],
+      ["Reports opened", isAdmin ? "Reports" : "Branch Reports"],
+    ];
+    if (message === "New customer form opened") setCustomerCreateSignal((value) => value + 1);
+    if (message === "Walk-in registration opened") setWalkInCreateSignal((value) => value + 1);
+    if (message.endsWith(" attendance details opened")) selectPage("Attendance");
+    if (message.endsWith(" payment follow-up opened")) selectPage("Walk-ins & Memberships");
+    if (message.endsWith(" details opened")) selectPage("Branches");
+    if (message === "Memberships expiring soon opened") selectPage("Walk-ins & Memberships");
+    if (message === "Pending registrations opened") selectPage("QR Registrations");
+    if (message === "Sync queue opened") selectPage("Scanner and Sync Status");
+    const destination = destinations.find(([trigger]) => message === trigger)?.[1];
+    if (destination) selectPage(destination);
+    showNotice(message);
   };
   useEffect(() => {
     const onPopState = () => setActive(activePageFromPath(window.location.pathname));
@@ -146,15 +166,15 @@ function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
   useEffect(() => {
-    const adminOnly = ["Branches", "Front Desk Accounts", "Audit Logs", "Settings"];
-    if (!isAdmin && adminOnly.includes(active)) {
+    if (!canAccessPage(active, role, account?.branch)) {
       setActive("Dashboard");
       window.history.replaceState({}, "", "/");
     }
-  }, [active, isAdmin]);
+  }, [active, role, account?.branch]);
   const changeTheme = setTheme;
 
-  if (window.location.pathname.startsWith("/register")) return <QRRegistrationPage />;
+  if (window.location.pathname === publicRoutes.profileRegistration) return <QRRegistrationPage mode="profile" />;
+  if (window.location.pathname === publicRoutes.walkInCheckIn) return <QRRegistrationPage mode="walk-in" />;
   if (!isAuthenticated) {
     if (window.location.pathname === "/setup") return <InitialSetupPage />;
     if (window.location.pathname === "/forgot-password") return <ForgotPasswordPage />;
@@ -185,7 +205,7 @@ function App() {
                 <div className="mt-2 space-y-1">
                   {group.items.map((item) => {
                     const Icon = icons[item.icon as keyof typeof icons];
-                    const selected = active === item.label;
+                    const selected = currentPage === item.label;
                     return (
                       <button
                         key={item.label}
@@ -299,41 +319,47 @@ function App() {
           </div>
         )}
         <PageContainer>
-          {active === "Customers" ? (
-            <CustomersPage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active === "Coaches" ? (
-            <CoachesPage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active === "Walk-ins & Memberships" ? (
+          {currentPage === "Customers" ? (
+            <CustomersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} openCreateSignal={customerCreateSignal} />
+          ) : currentPage === "QR Registrations" ? (
+            <QRRegistrationsPage />
+          ) : currentPage === "Coaches" ? (
+            <CoachesPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+          ) : currentPage === "Walk-ins & Memberships" ? (
             <WalkInsMembershipsPage
               isAdmin={isAdmin}
-              onAction={showNotice}
+              branch={account?.branch}
+              onAction={handleAction}
               initialView="walkins"
+              openWalkInSignal={walkInCreateSignal}
             />
-          ) : active === "Attendance" ? (
-            <AttendancePage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active === "RFID Keyfobs" ? (
-            <RFIDKeyfobsPage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active === "Scanner and Sync Status" ? (
-            <ScannerSyncPage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active === "Branches" ? (
-            <AdministrationPages onAction={showNotice} initialView="branches" theme={theme} onThemeChange={changeTheme} />
-          ) : active === "Front Desk Accounts" ? (
-            <AdministrationPages onAction={showNotice} initialView="accounts" theme={theme} onThemeChange={changeTheme} />
-          ) : active === "Audit Logs" ? (
-            <AdministrationPages onAction={showNotice} initialView="audit" theme={theme} onThemeChange={changeTheme} />
-          ) : active === "Settings" ? (
-            <AdministrationPages onAction={showNotice} initialView="settings" theme={theme} onThemeChange={changeTheme} account={account} onChangeEmail={changeEmail} onChangePassword={changePassword} />
-          ) : active === "Reports" || active === "Branch Reports" ? (
-            <ReportsPage isAdmin={isAdmin} onAction={showNotice} />
-          ) : active !== "Dashboard" ? (
+          ) : currentPage === "Attendance" ? (
+            <AttendancePage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+          ) : currentPage === "RFID Keyfobs" ? (
+            <RFIDKeyfobsPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+          ) : currentPage === "Scanner and Sync Status" ? (
+            <ScannerSyncPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+          ) : currentPage === "Branches" ? (
+            <BranchesScreen onAction={handleAction} />
+          ) : currentPage === "Front Desk Accounts" ? (
+            <StaffScreen onAction={handleAction} />
+          ) : currentPage === "QR Codes" ? (
+            <QRSettingsPage />
+          ) : currentPage === "Audit Logs" ? (
+            <AuditLogsScreen onAction={handleAction} />
+          ) : currentPage === "Settings" ? (
+            <SettingsPage onAction={handleAction} theme={theme} onThemeChange={changeTheme} account={account} onChangeEmail={changeEmail} onChangePassword={changePassword} />
+          ) : currentPage === "Reports" || currentPage === "Branch Reports" ? (
+            <ReportsPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+          ) : currentPage !== "Dashboard" ? (
             <PlaceholderPage
-              title={active}
-              onAction={() => showNotice(`${active} workflow opened`)}
+              title={currentPage}
+              onAction={() => handleAction(`${currentPage} workflow opened`)}
             />
           ) : isAdmin ? (
-            <AdminDashboardPage onAction={showNotice} />
+            <AdminDashboardPage onAction={handleAction} />
           ) : (
-            <FrontDeskDashboardPage onAction={showNotice} />
+            <FrontDeskDashboardPage branch={account?.branch} onAction={handleAction} />
           )}
         </PageContainer>
       </main>
@@ -418,7 +444,7 @@ function Dashboard({
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => onAction("Report exported as CSV")}
+            onClick={() => downloadCsv("gytrak-dashboard-report.csv", [["Metric", "Value"], ...stats.map((item) => [item.label, item.value])])}
             className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
           >
             Export report
@@ -463,7 +489,7 @@ function Dashboard({
                 Total visits across all locations
               </p>
             </div>
-            <button className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--text-muted)]">
+            <button onClick={() => onAction("Attendance records opened")} className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--text-muted)]">
               Last 7 days <ChevronDown size={13} />
             </button>
           </div>
@@ -526,7 +552,7 @@ function Dashboard({
                 Latest updates from your team
               </p>
             </div>
-            <button className="text-xs font-semibold text-[var(--accent)]">
+            <button onClick={() => onAction("Activity log opened")} className="text-xs font-semibold text-[var(--accent)]">
               View all
             </button>
           </div>
@@ -671,6 +697,16 @@ function PlaceholderPage({
       </div>
     </div>
   );
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export default App;

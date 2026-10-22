@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -10,8 +10,9 @@ import {
 import { formatPHP as php } from "../../lib/utils";
 import { addBillingMonths, durationToMonths, membershipDueState } from "../../lib/membership";
 import Modal from "../../components/shared/Modal";
-import { customers, membershipPlans, memberships as initialMemberships, walkIns as initialWalkIns } from "../../data/mockData";
 import { nextMockId } from "../../services/mockApi";
+import { useGymData } from "../../contexts/GymDataContext";
+import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan } from "../../types";
 
 type WalkIn = {
   id: string;
@@ -26,31 +27,14 @@ type WalkIn = {
   method: string;
   status: "Registered" | "Completed" | "Checked in";
 };
-type Membership = {
-  id: string;
-  customer: string;
-  customerId: string;
-  plan: string;
-  start: string;
-  end: string;
-  status: "Active" | "Pending" | "Expired" | "Suspended";
-  payment: "Paid" | "Pending";
-  branch: string;
-  price: number;
-  payments?: PaymentRecord[];
-};
-type PaymentRecord = { id: string; date: string; amount: number; method: string; reference: string };
-type Plan = {
-  name: string;
-  duration: string;
-  price: number;
-  active: boolean;
-  used: number;
-};
+type Membership = SharedMembership;
+type Plan = SharedMembershipPlan;
 type Props = {
   isAdmin: boolean;
+  branch?: string;
   onAction: (message: string) => void;
   initialView?: "walkins" | "memberships";
+  openWalkInSignal?: number;
 };
 
 const badge = (value: string) =>
@@ -64,18 +48,12 @@ const badge = (value: string) =>
 
 export default function WalkInsMembershipsPage({
   isAdmin,
+  branch: assignedBranch = "Makati Central",
   onAction,
   initialView = "walkins",
+  openWalkInSignal = 0,
 }: Props) {
-  const [walkIns, setWalkIns] = useState<WalkIn[]>(() =>
-    initialWalkIns.map((walkIn) => ({ ...walkIn })),
-  );
-  const [memberships, setMemberships] = useState<Membership[]>(() =>
-    initialMemberships.map((membership) => ({ ...membership })),
-  );
-  const [plans, setPlans] = useState<Plan[]>(() =>
-    membershipPlans.map((plan) => ({ ...plan })),
-  );
+  const { customers, walkIns, memberships, membershipPlans: plans, payments, addWalkIn, removeWalkIn, updateWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, recordMembershipPayment } = useGymData();
   const [view, setView] = useState<"walkins" | "memberships" | "plans">(
     initialView,
   );
@@ -86,7 +64,10 @@ export default function WalkInsMembershipsPage({
   const [membershipForm, setMembershipForm] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
-  const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : "Makati Central");
+  const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : assignedBranch);
+  useEffect(() => {
+    if (openWalkInSignal) setWalkInForm(true);
+  }, [openWalkInSignal]);
   const scopedWalkIns = walkIns.filter(
     (item) => scopedBranch === "All branches" || item.branch === scopedBranch,
   );
@@ -117,7 +98,13 @@ export default function WalkInsMembershipsPage({
       <WalkInDetails
         visit={selectedWalkIn}
         onBack={() => setSelectedWalkIn(null)}
+        onPayment={(method) => {
+          updateWalkIn(selectedWalkIn.id, { payment: "Paid", method });
+          setSelectedWalkIn({ ...selectedWalkIn, payment: "Paid", method });
+          onAction("Walk-in payment recorded");
+        }}
         onCorrect={(reason) => {
+          updateWalkIn(selectedWalkIn.id, { reason });
           onAction(`Walk-in corrected: ${reason}`);
           setSelectedWalkIn(null);
         }}
@@ -127,11 +114,14 @@ export default function WalkInsMembershipsPage({
     return (
       <MembershipDetails
         membership={selectedMembership}
+        payments={payments.filter((payment) => payment.membershipId === selectedMembership.id)}
+        onRecordPayment={(payment) => {
+          recordMembershipPayment(selectedMembership.id, payment);
+          setSelectedMembership({ ...selectedMembership, payment: "Paid", status: selectedMembership.status === "Expired" ? "Active" : selectedMembership.status, end: addBillingMonths(selectedMembership.end, durationToMonths(selectedMembership.plan)) });
+        }}
         onBack={() => setSelectedMembership(null)}
         onUpdate={(updated) => {
-          setMemberships((current) =>
-            current.map((item) => (item.id === updated.id ? updated : item)),
-          );
+          updateMembership(updated);
           setSelectedMembership(updated);
           onAction("Membership status updated");
         }}
@@ -141,13 +131,14 @@ export default function WalkInsMembershipsPage({
   if (walkInForm)
     return (
       <Modal label="Register walk-in" onClose={() => setWalkInForm(false)} wide>
-        <WalkInForm
+          <WalkInForm
+        customers={customers}
         branch={
           scopedBranch === "All branches" ? "Makati Central" : scopedBranch
         }
         onBack={() => setWalkInForm(false)}
         onSave={(visit) => {
-          setWalkIns((current) => [visit, ...current]);
+          addWalkIn(visit);
           setWalkInForm(false);
           onAction("Walk-in visit registered");
         }}
@@ -158,13 +149,14 @@ export default function WalkInsMembershipsPage({
     return (
       <Modal label="Create membership" onClose={() => setMembershipForm(false)} wide>
         <MembershipForm
+        customers={customers}
         plans={plans}
         branch={
           scopedBranch === "All branches" ? "Makati Central" : scopedBranch
         }
         onBack={() => setMembershipForm(false)}
         onSave={(membership) => {
-          setMemberships((current) => [membership, ...current]);
+          createMembership(membership);
           setMembershipForm(false);
           onAction("Membership created");
         }}
@@ -178,7 +170,7 @@ export default function WalkInsMembershipsPage({
         plans={plans}
         onBack={() => setView("memberships")}
         onSave={(plan) => {
-          setPlans((current) => [...current, plan]);
+          addMembershipPlan(plan);
           onAction("Membership plan created");
         }}
       />
@@ -255,6 +247,7 @@ export default function WalkInsMembershipsPage({
       )}
       {view === "walkins" ? (
         <WalkInList
+          customers={customers}
           rows={filteredWalkIns}
           allRows={scopedWalkIns}
           query={query}
@@ -264,7 +257,7 @@ export default function WalkInsMembershipsPage({
           onSelect={setSelectedWalkIn}
           onDelete={(row) => {
             if (window.confirm(`Delete walk-in ${row.id}?`)) {
-              setWalkIns((current) => current.filter((item) => item.id !== row.id));
+              removeWalkIn(row.id);
               onAction("Walk-in deleted");
             }
           }}
@@ -280,7 +273,7 @@ export default function WalkInsMembershipsPage({
           onSelect={setSelectedMembership}
           onDelete={(row) => {
             if (window.confirm(`Delete membership ${row.id}?`)) {
-              setMemberships((current) => current.filter((item) => item.id !== row.id));
+              removeMembership(row.id);
               onAction("Membership deleted");
             }
           }}
@@ -291,6 +284,7 @@ export default function WalkInsMembershipsPage({
 }
 
 function WalkInList({
+  customers,
   rows,
   allRows,
   query,
@@ -300,6 +294,7 @@ function WalkInList({
   onSelect,
   onDelete,
 }: {
+  customers: Array<{ id: string }>;
   rows: WalkIn[];
   allRows: WalkIn[];
   query: string;
@@ -649,10 +644,12 @@ function DataTable({
 }
 
 function WalkInForm({
+  customers,
   branch,
   onBack,
   onSave,
 }: {
+  customers: Array<{ id: string; name: string }>;
   branch: string;
   onBack: () => void;
   onSave: (visit: WalkIn) => void;
@@ -780,13 +777,16 @@ function WalkInForm({
 function WalkInDetails({
   visit,
   onBack,
+  onPayment,
   onCorrect,
 }: {
   visit: WalkIn;
   onBack: () => void;
+  onPayment: (method: string) => void;
   onCorrect: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
+  const [method, setMethod] = useState("Cash");
   return (
     <FormShell
       title={visit.id}
@@ -802,6 +802,7 @@ function WalkInDetails({
         <Info label="Payment" value={`${visit.payment} · ${visit.method}`} />
       </div>
       <div className="mt-6 border-t border-[var(--border)] pt-5">
+        {visit.payment === "Pending" && <div className="mb-5 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4"><h3 className="font-semibold">Record manual payment</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Payment remains pending until staff confirms receipt.</p><div className="mt-3 flex flex-wrap gap-2"><select value={method} onChange={(event) => setMethod(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select><button onClick={() => onPayment(method)} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]">Confirm payment received</button></div></div>}
         <h3 className="font-semibold">Correct visit record</h3>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           A reason is required and the correction remains in the audit trail.
@@ -825,11 +826,13 @@ function WalkInDetails({
 }
 
 function MembershipForm({
+  customers,
   plans,
   branch,
   onBack,
   onSave,
 }: {
+  customers: Array<{ id: string; name: string }>;
   plans: Plan[];
   branch: string;
   onBack: () => void;
@@ -927,11 +930,15 @@ function MembershipForm({
 
 function MembershipDetails({
   membership,
+  payments,
+  onRecordPayment,
   onBack,
   onUpdate,
   onAction,
 }: {
   membership: Membership;
+  payments: Array<{ id: string; date: string; amount: number; method: string; reference: string }>;
+  onRecordPayment: (payment: { date: string; amount: number; method: string; reference: string }) => void;
   onBack: () => void;
   onUpdate: (membership: Membership) => void;
   onAction: (message: string) => void;
@@ -942,23 +949,16 @@ function MembershipDetails({
   const [reference, setReference] = useState("");
   const dueState = membershipDueState(membership.end);
   const recordPayment = () => {
-    const payment: PaymentRecord = {
-      id: nextMockId("PAY", 10),
+    const payment = {
       date: "Oct 20, 2026",
       amount: Number(amount) || 0,
       method,
       reference: reference.trim() || "—",
     };
     if (!payment.amount) return;
-    onUpdate({
-      ...membership,
-      payment: "Paid",
-      status: membership.status === "Expired" ? "Active" : membership.status,
-      end: addBillingMonths(membership.end, durationToMonths(membership.plan)),
-      payments: [...(membership.payments ?? []), payment],
-    });
-    setRecording(false);
+    onRecordPayment(payment);
     onAction("Manual membership payment recorded");
+    setRecording(false);
   };
   return (
     <FormShell
@@ -988,7 +988,7 @@ function MembershipDetails({
         </div>
         {recording && <div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" placeholder="Amount" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><select value={method} onChange={(event) => setMethod(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Reference (optional)" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><button onClick={recordPayment} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)] sm:col-span-3">Confirm payment received</button></div>}
       </div>
-      <div className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Payment history</h3>{membership.payments?.length ? <div className="mt-3 space-y-2 text-xs">{membership.payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
+      <div id="membership-payment-history" className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Payment history</h3>{payments.length ? <div className="mt-3 space-y-2 text-xs">{payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
       <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--border)] pt-5">
         {membership.status === "Active" && (
           <button
@@ -1008,14 +1008,14 @@ function MembershipDetails({
         )}
         {membership.status === "Expired" && (
           <button
-            onClick={() => onAction("Renewal flow opened")}
+            onClick={() => setRecording(true)}
             className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]"
           >
             Renew membership
           </button>
         )}
         <button
-          onClick={() => onAction("Payment history opened")}
+          onClick={() => document.getElementById("membership-payment-history")?.scrollIntoView({ behavior: "smooth" })}
           className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
         >
           Payment history

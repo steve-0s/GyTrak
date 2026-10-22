@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, Check, Plus, Search } from "lucide-react";
 import FilterSelect from "../../components/shared/FilterSelect";
-import { visitRecords } from "../../data/mockData";
+import { useGymData } from "../../contexts/GymDataContext";
 
 type AttendanceEvent = {
   id: string;
@@ -16,11 +16,12 @@ type AttendanceEvent = {
   reason?: string;
 };
 
-type Props = { isAdmin: boolean; onAction: (message: string) => void };
+type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 const badge = (value: string) => value === "Completed" || value === "Synced" ? "bg-[var(--accent-subtle)] text-[var(--accent)]" : value === "Checked in" || value === "Pending" ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700";
 
-export default function AttendancePage({ isAdmin, onAction }: Props) {
-  const [events, setEvents] = useState<AttendanceEvent[]>(() => visitRecords.map((event) => ({
+export default function AttendancePage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
+  const { visits, updateVisit } = useGymData();
+  const events = useMemo(() => visits.map((event) => ({
     id: event.id,
     customer: event.customer,
     branch: event.branch,
@@ -31,12 +32,12 @@ export default function AttendancePage({ isAdmin, onAction }: Props) {
     status: event.status,
     sync: event.sync,
     reason: "reason" in event ? event.reason : undefined,
-  })));
+  })), [visits]);
   const [selected, setSelected] = useState<AttendanceEvent | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [source, setSource] = useState("All sources");
-  const [branch, setBranch] = useState(isAdmin ? "All branches" : "Makati Central");
+  const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch);
   const rows = events.filter((event) =>
     (branch === "All branches" || event.branch === branch) &&
     event.customer.toLowerCase().includes(query.toLowerCase()) &&
@@ -46,7 +47,7 @@ export default function AttendancePage({ isAdmin, onAction }: Props) {
 
   if (selected) {
     return <AttendanceDetails event={selected} onBack={() => setSelected(null)} onSave={(updated) => {
-      setEvents((current) => current.map((event) => event.id === updated.id ? updated : event));
+      updateVisit(updated.id, { timeIn: updated.in, timeOut: updated.out, source: updated.source, status: updated.status, reason: updated.reason });
       setSelected(updated);
       onAction(updated.status === "Voided" ? "Attendance event voided" : "Attendance correction saved");
     }} />;

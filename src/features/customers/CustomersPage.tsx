@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -11,8 +11,7 @@ import {
 import { createMockId } from "../../services/mockApi";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
-import { customers as initialCustomers } from "../../data/mockData";
-import { visitRecords } from "../../data/mockData";
+import { useGymData } from "../../contexts/GymDataContext";
 
 type Customer = {
   id: string;
@@ -28,7 +27,7 @@ type Customer = {
   endDate?: string;
   keyfob?: string;
 };
-type Props = { isAdmin: boolean; onAction: (message: string) => void };
+type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void; openCreateSignal?: number };
 
 const statusClasses: Record<Customer["status"], string> = {
   Active: "bg-[var(--accent-subtle)] text-[var(--accent)]",
@@ -37,15 +36,13 @@ const statusClasses: Record<Customer["status"], string> = {
   None: "bg-[var(--bg)] text-[var(--text-muted)]",
 };
 
-export default function CustomersPage({ isAdmin, onAction }: Props) {
-  const [customers, setCustomers] = useState<Customer[]>(() =>
-    initialCustomers.map((customer) => ({ ...customer })),
-  );
+export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0 }: Props) {
+  const { customers, visits, upsertCustomer, updateCustomer } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState(
-    isAdmin ? "All branches" : "Makati Central",
+    isAdmin ? "All branches" : assignedBranch,
   );
   const [type, setType] = useState("All types");
   const [status, setStatus] = useState("All statuses");
@@ -64,6 +61,10 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
     [customers, branch, type, status, query],
   );
   const selected = customers.find((customer) => customer.id === selectedId);
+  useEffect(() => {
+    if (!openCreateSignal) return;
+    setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: branch === "All branches" ? assignedBranch : branch, registered: "Today", lastVisit: "—" });
+  }, [openCreateSignal]);
 
   if (editing)
     return (
@@ -71,16 +72,10 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
         <CustomerForm
         customer={editing.id ? editing : undefined}
         customers={customers}
-        branch={branch === "All branches" ? "Makati Central" : branch}
+        branch={branch === "All branches" ? assignedBranch : branch}
         onCancel={() => setEditing(null)}
         onSave={(customer) => {
-          setCustomers((current) =>
-            editing.id
-              ? current.map((item) =>
-                  item.id === customer.id ? customer : item,
-                )
-              : [customer, ...current],
-          );
+          upsertCustomer(customer);
           setEditing(null);
           setSelectedId(customer.id);
           onAction(editing.id ? "Customer updated" : "Customer created");
@@ -92,6 +87,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
     return (
       <CustomerDetails
         customer={selected}
+        visits={visits}
         onBack={() => setSelectedId(null)}
         onEdit={() => setEditing(selected)}
         onChangeType={() => {
@@ -105,9 +101,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
                   plan: "Monthly Membership",
                   endDate: "Nov 20, 2026",
                 };
-          setCustomers((current) =>
-            current.map((item) => (item.id === selected.id ? updated : item)),
-          );
+          updateCustomer(updated);
           setSelectedId(updated.id);
           onAction(
             updated.type === "Member"
@@ -123,9 +117,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
             plan: "Monthly Membership",
             endDate: "Nov 20, 2026",
           };
-          setCustomers((current) =>
-            current.map((item) => (item.id === selected.id ? updated : item)),
-          );
+          updateCustomer(updated);
           onAction("Walk-in converted using the existing profile");
         }}
         onAction={onAction}
@@ -137,7 +129,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
       <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
-            {isAdmin ? "All branches" : "Makati Central"}
+            {isAdmin ? "All branches" : assignedBranch}
           </p>
           <h2 className="text-2xl font-bold tracking-tight">Customers</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -146,7 +138,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => onAction("Customer export prepared")}
+            onClick={() => exportCustomers(visible)}
             className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block"
           >
             Export
@@ -160,7 +152,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
                 email: "",
                 type: "Walk-in",
                 status: "None",
-                branch: branch === "All branches" ? "Makati Central" : branch,
+                branch: branch === "All branches" ? assignedBranch : branch,
                 registered: "Today",
                 lastVisit: "—",
               })
@@ -238,7 +230,7 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
             <button
               onClick={() => {
                 setQuery("");
-                setBranch(isAdmin ? "All branches" : "Makati Central");
+                setBranch(isAdmin ? "All branches" : assignedBranch);
                 setType("All types");
                 setStatus("All statuses");
               }}
@@ -347,6 +339,20 @@ export default function CustomersPage({ isAdmin, onAction }: Props) {
   );
 }
 
+function exportCustomers(rows: Customer[]) {
+  const csvRows = [
+    ["ID", "Name", "Phone", "Email", "Type", "Status", "Branch", "Registered", "Last visit"],
+    ...rows.map((customer) => [customer.id, customer.name, customer.phone, customer.email, customer.type, customer.status, customer.branch, customer.registered, customer.lastVisit]),
+  ];
+  const csv = csvRows.map((row) => row.map((value) => `"${String(value).replace(/["]/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "gytrak-customers.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function Filter({
   value,
   onChange,
@@ -361,6 +367,7 @@ function Filter({
 
 function CustomerDetails({
   customer,
+  visits: allVisits,
   onBack,
   onEdit,
   onConvert,
@@ -368,6 +375,7 @@ function CustomerDetails({
   onAction,
 }: {
   customer: Customer;
+  visits: Array<{ customer: string; date: string; timeIn: string; timeOut: string; id: string; branch: string; source: string; status: string }>;
   onBack: () => void;
   onEdit: () => void;
   onConvert: () => void;
@@ -376,7 +384,7 @@ function CustomerDetails({
 }) {
   const [visitDate, setVisitDate] = useState("");
   const [visitTime, setVisitTime] = useState("");
-  const visits = visitRecords.filter(
+  const visits = allVisits.filter(
     (event) =>
       event.customer === customer.name &&
       (!visitDate || event.date.toLowerCase().includes(visitDate.toLowerCase())) &&
