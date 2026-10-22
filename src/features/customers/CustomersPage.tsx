@@ -31,7 +31,7 @@ export type Customer = {
   keyfob?: string;
   photo?: string;
 };
-type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void; openCreateSignal?: number };
+type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void; openCreateSignal?: number; openCustomerId?: string | null };
 
 const statusClasses: Record<Customer["status"], string> = {
   Active: "bg-[var(--accent-subtle)] text-[var(--accent)]",
@@ -40,7 +40,7 @@ const statusClasses: Record<Customer["status"], string> = {
   None: "bg-[var(--bg)] text-[var(--text-muted)]",
 };
 
-export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0 }: Props) {
+export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0, openCustomerId }: Props) {
   const { customers, registrations, visits, upsertCustomer, updateCustomer, reviewRegistration } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -70,6 +70,12 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
     if (!openCreateSignal) return;
     setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: branch === "All branches" ? assignedBranch : branch, registered: "Today", lastVisit: "—", classification: "Regular" });
   }, [openCreateSignal]);
+  useEffect(() => {
+    if (!openCustomerId) return;
+    const target = customers.find((customer) => customer.id === openCustomerId);
+    if (!target || (!isAdmin && target.branch !== assignedBranch)) return;
+    setSelectedId(target.id);
+  }, [openCustomerId, customers, isAdmin, assignedBranch]);
 
   if (editing)
     return (

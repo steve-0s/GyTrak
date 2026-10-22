@@ -93,6 +93,7 @@ function App() {
   const [headerVisible, setHeaderVisible] = useState(true);
   const [customerCreateSignal, setCustomerCreateSignal] = useState(0);
   const [walkInCreateSignal, setWalkInCreateSignal] = useState(0);
+  const [openCustomerId, setOpenCustomerId] = useState<string | null>(null);
   const navGroups = getNavigationGroups(role, account?.branch);
   const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
   const showNotice = (message: string) => {
@@ -324,7 +325,7 @@ function App() {
         )}
         <PageContainer>
           {currentPage === "Customers" ? (
-            <CustomersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} openCreateSignal={customerCreateSignal} />
+            <CustomersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} openCreateSignal={customerCreateSignal} openCustomerId={openCustomerId} />
           ) : currentPage === "Coaches" ? (
             <CoachesPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Walk-ins & Memberships" ? (
@@ -338,7 +339,7 @@ function App() {
           ) : currentPage === "Membership Reminders" ? (
             <MembershipRemindersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Attendance" ? (
-            <AttendancePage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
+            <AttendancePage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} onOpenCustomer={(customerId) => { setOpenCustomerId(customerId); selectPage("Customers"); }} />
           ) : currentPage === "RFID Keyfobs" ? (
             <RFIDKeyfobsPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Scanner and Sync Status" ? (
