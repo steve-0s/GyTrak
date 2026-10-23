@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Edit3,
   Plus,
   Search,
@@ -14,6 +16,7 @@ import { createMockId } from "../../services/mockApi";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
+import type { VisitRecord } from "../../types";
 
 export type Customer = {
   id: string;
@@ -137,7 +140,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
 
   return (
     <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             {isAdmin ? "All branches" : assignedBranch}
@@ -147,10 +150,10 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             Search and manage customer profiles without duplicating records.
           </p>
         </div>
-        <div className="flex gap-2">
-                        <button
+        <div className="page-header-actions">
+          <button
             onClick={() => exportCustomers(visible)}
-            className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block"
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
           >
             Export
           </button>
@@ -192,16 +195,16 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
         ].map(([label, value]) => (
           <div
             key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+            className="summary-card"
           >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-1 text-xl font-bold">{value}</p>
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
           </div>
         ))}
       </div>
       {pendingRegistrations.length > 0 && <section className="mb-5 rounded-xl border border-amber-200 bg-amber-50/50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Pending QR registrations</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Review submissions here before they become customer profiles.</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{pendingRegistrations.length} pending</span></div><div className="mt-3 space-y-2">{pendingRegistrations.map((submission) => { const matches = customers.filter((customer) => submission.possibleCustomerIds.includes(customer.id)); return <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-[var(--surface)] p-3 text-xs"><div><p className="font-semibold">{submission.name} <span className="font-normal text-[var(--text-muted)]">· {submission.branch}</span></p><p className="mt-1 text-[var(--text-muted)]">{submission.phone} · {submission.email || "No email"}{matches.length ? ` · Possible match: ${matches.map((item) => item.name).join(", ")}` : ""}</p></div><div className="flex gap-2"><button onClick={() => { const error = reviewRegistration(submission.id, "approve", isAdmin ? "Admin" : "Front Desk", matches.length === 1 ? matches[0].id : undefined); if (!error) onAction("QR registration approved"); }} className="rounded-lg bg-[var(--accent)] px-3 py-2 font-semibold text-[var(--on-accent)]">{matches.length === 1 ? "Link and approve" : "Approve"}</button><button onClick={() => { reviewRegistration(submission.id, "correction", isAdmin ? "Admin" : "Front Desk", undefined, "Please confirm your details with the front desk."); onAction("QR registration returned for correction"); }} className="rounded-lg border border-[var(--border)] px-3 py-2 font-semibold">Correction</button><button onClick={() => { reviewRegistration(submission.id, "reject", isAdmin ? "Admin" : "Front Desk"); onAction("QR registration rejected"); }} className="rounded-lg border border-red-200 px-3 py-2 font-semibold text-red-700">Reject</button></div></div>; })}</div></section>}
-      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--border)] p-4 sm:p-5">
+      <section className="data-table-section">
+        <div className="data-table-toolbar flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
             <label className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 sm:max-w-xs">
               <Search size={16} className="text-[var(--text-muted)]" />
@@ -253,8 +256,8 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
           </div>
         </div>
         <div className="table-viewport overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-xs">
-            <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
+          <table className="data-table min-w-[900px]">
+            <thead>
               <tr>
                 {[
                   "Customer ID",
@@ -266,7 +269,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                   "Last visit",
                   "",
                 ].map((label) => (
-                  <th key={label} className="px-5 py-3 font-semibold">
+                  <th key={label}>
                     {label}
                   </th>
                 ))}
@@ -275,10 +278,10 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             <tbody className="divide-y divide-[var(--border)]">
               {visible.slice((page - 1) * 5, page * 5).map((customer) => (
                 <tr key={customer.id} tabIndex={0} onClick={() => setSelectedId(customer.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(customer.id); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
-                  <td className="px-5 py-4 font-medium text-[var(--text-muted)]">
+                  <td className="font-medium text-[var(--text-muted)]">
                     {customer.id}
                   </td>
-                  <td className="px-5 py-4">
+                  <td>
                     <button
                       onClick={(event) => { event.stopPropagation(); setSelectedId(customer.id); }}
                       className="font-semibold hover:text-[var(--accent)]"
@@ -286,27 +289,27 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                       <span className="inline-flex items-center gap-2"><CustomerAvatar customer={customer} size="sm" />{customer.name}</span>
                     </button>
                   </td>
-                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                  <td className="text-[var(--text-muted)]">
                     <span className="block">{customer.phone}</span>
                     <span className="mt-0.5 block text-[11px]">
                       {customer.email}
                     </span>
                   </td>
-                  <td className="px-5 py-4">{customer.type}</td>
-                  <td className="px-5 py-4">
+                  <td>{customer.type}</td>
+                  <td>
                     <span
                       className={`rounded-full px-2 py-1 text-[11px] font-medium ${statusClasses[customer.status]}`}
                     >
                       {customer.status}
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                  <td className="text-[var(--text-muted)]">
                     {customer.branch}
                   </td>
-                  <td className="px-5 py-4 text-[var(--text-muted)]">
+                  <td className="text-[var(--text-muted)]">
                     {customer.lastVisit}
                   </td>
-                  <td className="px-5 py-4 text-right">
+                  <td className="text-right">
                     <button
                       onClick={(event) => { event.stopPropagation(); setSelectedId(customer.id); }}
                       className="font-semibold text-[var(--accent)]"
@@ -324,7 +327,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             </div>
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3 text-xs text-[var(--text-muted)]">
+        <div className="data-table-pagination">
           <span>
             {visible.length} result{visible.length === 1 ? "" : "s"}
           </span>
@@ -387,7 +390,7 @@ function CustomerDetails({
   onAction,
 }: {
   customer: Customer;
-  visits: Array<{ customerId: string; customer: string; date: string; timeIn: string; timeOut: string; id: string; branch: string; source: string; status: string }>;
+  visits: VisitRecord[];
   onBack: () => void;
   onEdit: () => void;
   onConvert: () => void;
@@ -510,6 +513,7 @@ function CustomerDetails({
       </div>
       <div className="mt-5">
         <InfoSection title="Visit history">
+          <AttendanceHeatmap customerId={customer.id} visits={allVisits} />
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--bg)] p-3">
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs">
@@ -538,7 +542,7 @@ function CustomerDetails({
             </span>
           </div>
           <div className="table-viewport overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-xs">
+            <table className="data-table data-table--compact min-w-[680px]">
               <thead className="text-[var(--text-muted)]">
                 <tr>
                   <th className="px-3 pb-3 font-medium">Date</th>
@@ -569,6 +573,211 @@ function CustomerDetails({
             )}
           </div>
         </InfoSection>
+      </div>
+    </div>
+  );
+}
+
+function attendanceBusinessDate(value: string) {
+  const datePrefix = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T| )/);
+  const explicitTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  if (datePrefix && !explicitTimezone) {
+    const [, year, month, day] = datePrefix;
+    const candidate = `${year}-${month}-${day}`;
+    return isValidDateKey(candidate) ? candidate : null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (explicitTimezone) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(parsed);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+    const candidate = `${part("year").padStart(4, "0")}-${part("month")}-${part("day")}`;
+    return isValidDateKey(candidate) ? candidate : null;
+  }
+  const candidate = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+  return isValidDateKey(candidate) ? candidate : null;
+}
+
+function isValidDateKey(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1]) && date.getUTCMonth() + 1 === Number(match[2]) && date.getUTCDate() === Number(match[3]);
+}
+
+function todayInManila() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function displayAttendanceDate(value: string) {
+  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+type CalendarDay = { date: string; monthLabel?: string } | null;
+
+function buildAttendanceCalendar(year: number) {
+  const dayCount = (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000;
+  const firstDayOffset = (new Date(Date.UTC(year, 0, 1)).getUTCDay() + 6) % 7;
+  const weekCount = Math.ceil((firstDayOffset + dayCount) / 7);
+  const weeks: CalendarDay[][] = Array.from({ length: weekCount }, () => Array<CalendarDay>(7).fill(null));
+
+  for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
+    const date = new Date(Date.UTC(year, 0, dayIndex + 1));
+    const weekIndex = Math.floor((firstDayOffset + dayIndex) / 7);
+    const weekdayIndex = (firstDayOffset + dayIndex) % 7;
+    weeks[weekIndex][weekdayIndex] = {
+      date: date.toISOString().slice(0, 10),
+      monthLabel: date.getUTCDate() === 1
+        ? date.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })
+        : undefined,
+    };
+  }
+
+  return weeks;
+}
+
+function AttendanceHeatmap({ customerId, visits }: { customerId: string; visits: VisitRecord[] }) {
+  const [selectedYear, setSelectedYear] = useState(() => Number(todayInManila().slice(0, 4)));
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const { countsByDate, years, todayYear } = useMemo(() => {
+    const counts = new Map<string, number>();
+    visits.forEach((visit) => {
+      if (visit.customerId !== customerId || visit.status === "Voided") return;
+      const date = attendanceBusinessDate(visit.date);
+      if (date) counts.set(date, (counts.get(date) ?? 0) + 1);
+    });
+    return {
+      countsByDate: counts,
+      years: Array.from(new Set(Array.from(counts.keys(), (date) => Number(date.slice(0, 4))))).sort((a, b) => a - b),
+      todayYear: Number(todayInManila().slice(0, 4)),
+    };
+  }, [customerId, visits]);
+  const minYear = years.length ? Math.min(todayYear, ...years) : todayYear;
+  const weeks = buildAttendanceCalendar(selectedYear);
+  const selectedCount = selectedDate ? countsByDate.get(selectedDate) ?? 0 : 0;
+  const cellSize = `clamp(10px, calc((100cqi - ${44 + (weeks.length - 1) * 2}px) / ${weeks.length}), 20px)`;
+  const calendarColumns = `repeat(${weeks.length}, ${cellSize})`;
+  const calendarRows = `repeat(7, ${cellSize})`;
+  const monthLabels = weeks.flatMap((week, weekIndex) => {
+    const label = week.find((day) => day?.monthLabel)?.monthLabel;
+    return label ? [{ label, weekIndex }] : [];
+  });
+
+  return (
+    <div className="mb-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-semibold">Attendance activity</h4>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">Daily visits · {selectedYear}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Show previous year"
+            disabled={selectedYear <= minYear}
+            onClick={() => { setSelectedYear((year) => year - 1); setSelectedDate(null); }}
+            className="rounded-md border border-[var(--border)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <span className="min-w-10 text-center text-xs font-semibold">{selectedYear}</span>
+          <button
+            type="button"
+            aria-label="Show next year"
+            disabled={selectedYear >= todayYear}
+            onClick={() => { setSelectedYear((year) => year + 1); setSelectedDate(null); }}
+            className="rounded-md border border-[var(--border)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+      <div className="attendance-heatmap-calendar grid min-w-0 grid-cols-[36px_minmax(0,1fr)] gap-2">
+        <div className="attendance-weekday-labels grid gap-y-[2px] text-[9px] leading-none text-[var(--text-muted)]" style={{ gridTemplateRows: `18px ${calendarRows}` }}>
+          <span aria-hidden="true" />
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
+            <span key={label} className="flex items-center">{label}</span>
+          ))}
+        </div>
+        <div className="attendance-calendar-scroll min-w-0 overflow-x-auto overscroll-x-contain pb-1" aria-label={`${selectedYear} attendance calendar`}>
+          <div className="w-max">
+            <div className="mb-1 grid h-4 gap-x-[2px] text-[9px] leading-none text-[var(--text-muted)]" style={{ gridTemplateColumns: calendarColumns }}>
+              {monthLabels.map(({ label, weekIndex }, index) => {
+                const nextWeek = monthLabels[index + 1]?.weekIndex ?? weeks.length;
+                return (
+                  <span key={label} className="whitespace-nowrap" style={{ gridColumn: `${weekIndex + 1} / span ${nextWeek - weekIndex}` }}>
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="grid gap-x-[2px] gap-y-[2px]" style={{ gridTemplateColumns: calendarColumns }}>
+              {weeks.map((week, weekIndex) => (
+                <div key={weekIndex} className="grid gap-y-[2px]" style={{ gridTemplateRows: calendarRows }}>
+                  {week.map((day, weekdayIndex) => {
+                    if (!day) return <span key={`empty-${weekdayIndex}`} aria-hidden="true" className="block aspect-square w-full rounded-[2px] border border-transparent" />;
+                    const { date } = day;
+                    const count = countsByDate.get(date) ?? 0;
+                    const level = count >= 3 ? 3 : count;
+                    const backgroundColor = count
+                      ? `color-mix(in srgb, var(--accent) ${[0, 25, 50, 75][level]}%, var(--surface))`
+                      : "var(--bg)";
+                    const description = `${displayAttendanceDate(date)}: ${count} ${count === 1 ? "visit" : "visits"}`;
+                    return (
+                      <button
+                        key={date}
+                        type="button"
+                        title={description}
+                        aria-label={description}
+                        aria-pressed={selectedDate === date}
+                        onClick={() => setSelectedDate(date)}
+                        className={`box-border aspect-square w-full min-w-0 rounded-[2px] border border-[var(--border)] p-0 ${selectedDate === date ? "ring-2 ring-[var(--accent)] ring-offset-1 ring-offset-[var(--surface)]" : ""}`}
+                        style={{ backgroundColor }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <p aria-live="polite" className="min-h-4 text-xs text-[var(--text-muted)]">
+          {selectedDate ? `${displayAttendanceDate(selectedDate)} · ${selectedCount} ${selectedCount === 1 ? "visit" : "visits"}` : "Select a day to view its attendance"}
+        </p>
+        <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]" aria-label="Attendance frequency legend">
+          <span className="mr-0.5">Visits</span>
+          {[0, 1, 2, 3].map((level) => (
+            <span key={level} className="flex items-center gap-0.5">
+              <span
+                aria-label={["No visits", "1 visit", "2 visits", "3 or more visits"][level]}
+                className="h-3 w-3 rounded-[2px] border border-[var(--border)]"
+                style={{ backgroundColor: level === 0 ? "var(--bg)" : `color-mix(in srgb, var(--accent) ${level * 25}%, var(--surface))` }}
+              />
+              <span>{level === 3 ? "3+" : level}</span>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -612,7 +821,7 @@ function InfoSection({
   children: ReactNode;
 }) {
   return (
-    <section className={`h-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}>
+    <section className={`h-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}>
       <h3 className="mb-4 font-semibold">{title}</h3>
       {children}
     </section>

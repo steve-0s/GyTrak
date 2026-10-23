@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Activity,
   ArrowUpRight,
   Bell,
   Building2,
@@ -11,20 +10,16 @@ import {
   CreditCard,
   Dumbbell,
   LayoutDashboard,
-  LogOut,
-  Menu,
   MoreHorizontal,
   ClipboardList,
   Plus,
   Radio,
   ScanLine,
-  Search,
   Settings,
   ShieldCheck,
   UserCog,
   UserRoundPlus,
   Users,
-  X,
 } from "lucide-react";
 import {
   Area,
@@ -86,7 +81,8 @@ function App() {
   const { role, isAdmin, switchRole, isAuthenticated, account, signOut, changeEmail, changePassword } = useAuth();
   const { theme, setTheme } = useTheme();
   const [active, setActive] = useState(() => activePageFromPath(window.location.pathname));
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   const [notice, setNotice] = useState("");
   const [now, setNow] = useState(() => new Date());
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -94,6 +90,7 @@ function App() {
   const [walkInCreateSignal, setWalkInCreateSignal] = useState(0);
   const [attendanceSignal, setAttendanceSignal] = useState(0);
   const [openCustomerId, setOpenCustomerId] = useState<string | null>(null);
+  const drawerWasOpen = useRef(false);
   const navGroups = getNavigationGroups(role, account?.branch);
   const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
   const showNotice = (message: string) => {
@@ -104,6 +101,47 @@ function App() {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const updateSidebarForViewport = () => {
+      setIsDesktop(desktop.matches);
+      setMenuOpen(desktop.matches);
+    };
+    updateSidebarForViewport();
+    desktop.addEventListener("change", updateSidebarForViewport);
+    return () => desktop.removeEventListener("change", updateSidebarForViewport);
+  }, []);
+  useEffect(() => {
+    if (isDesktop) {
+      drawerWasOpen.current = false;
+      return;
+    }
+    if (menuOpen) {
+      drawerWasOpen.current = true;
+      window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#app-sidebar nav button")?.focus());
+    } else if (drawerWasOpen.current) {
+      drawerWasOpen.current = false;
+      document.querySelector<HTMLButtonElement>('[aria-controls="app-sidebar"]')?.focus();
+    }
+  }, [isDesktop, menuOpen]);
+  useEffect(() => {
+    if (isDesktop || !menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const bodyPaddingRight = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${bodyPaddingRight + scrollbarWidth}px`;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isDesktop, menuOpen]);
   useEffect(() => {
     let previousScrollY = window.scrollY;
 
@@ -124,13 +162,13 @@ function App() {
     switchRole();
     setActive("Dashboard");
     window.history.pushState({}, "", "/");
-    setMenuOpen(false);
+    setMenuOpen(isDesktop);
   };
   const selectPage = (page: string) => {
     if (!canAccessPage(page, role, account?.branch)) return;
     setActive(page);
     window.history.pushState({}, "", pagePaths[page] ?? "/");
-    setMenuOpen(false);
+    setMenuOpen(isDesktop);
   };
   const handleAction = (message: string) => {
     const destinations: Array<[string, string]> = [
@@ -189,141 +227,18 @@ function App() {
 
   return (
     <RoleLayout role={role} theme={theme}>
-      <Sidebar navGroups={navGroups} currentPage={currentPage} onNavigate={selectPage} icons={icons} />
-      <Header role={role} accountName={account?.name} branch={account?.branch} now={now} visible={headerVisible} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} onRoleSwitch={handleRoleSwitch} onSignOut={signOut} onNavigate={selectPage} />
-      <aside className="hidden fixed inset-y-0 left-0 z-20 w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col">
-        <div className="flex h-20 items-center gap-3 border-b border-[var(--border)] px-7">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)] text-[var(--on-accent)]">
-            <Activity size={19} />
-          </div>
-          <div>
-            <p className="text-lg font-bold tracking-tight">GyTrak</p>
-            <p className="text-[11px] uppercase tracking-[.18em] text-[var(--text-muted)]">
-              Operations
-            </p>
-          </div>
-        </div>
-        <div className="px-4 pt-7">
-          <nav className="mt-1 space-y-5">
-            {navGroups.map((group) => (
-              <div key={group.label}>
-                <p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-[var(--text-muted)]">
-                  {group.label}
-                </p>
-                <div className="mt-2 space-y-1">
-                  {group.items.map((item) => {
-                    const Icon = icons[item.icon as keyof typeof icons];
-                    const selected = currentPage === item.label;
-                    return (
-                      <button
-                        key={item.label}
-                        onClick={() => selectPage(item.label)}
-                        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${selected ? "bg-[var(--accent-subtle)] font-semibold text-[var(--accent)]" : "text-[var(--text-muted)] hover:bg-[var(--bg)] hover:text-[var(--text)]"}`}
-                      >
-                        <Icon size={18} strokeWidth={selected ? 2.4 : 1.8} />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </nav>
-        </div>
-        <div className="mt-auto p-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold">System status</span>
-              <span className="flex items-center gap-1.5 text-[11px] text-[var(--accent)]">
-                <i className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                Online
-              </span>
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
-              All scanners are connected and synced.
-            </p>
-          </div>
-        </div>
-      </aside>
-
-      <main className="lg:pl-64">
-        <header className="hidden">
-          <div className="flex items-center gap-3">
-            <button
-              className="lg:hidden"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              {menuOpen ? <X /> : <Menu />}
-            </button>
-            <time
-              dateTime={now.toISOString()}
-              className="max-w-[13rem] truncate text-xs font-medium tracking-wide text-[var(--text-muted)] sm:max-w-none sm:text-sm"
-            >
-              {new Intl.DateTimeFormat("en-PH", {
-                dateStyle: "full",
-                timeStyle: "short",
-                timeZone: "Asia/Manila",
-              }).format(now)}{" "}
-              <span className="text-[11px] font-normal opacity-70">· Manila time</span>
-            </time>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => showNotice("No new notifications")}
-              aria-label="Notifications"
-              className="relative rounded-lg p-2 text-[var(--text-muted)] hover:bg-[var(--bg)]"
-            >
-              <Bell size={19} />
-              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
-            </button>
-            <div className="hidden h-7 w-px bg-[var(--border)] sm:block" />
-            <button
-                  onClick={handleRoleSwitch}
-              className="flex items-center gap-2 rounded-lg py-1.5 pl-1.5 pr-2 text-left hover:bg-[var(--bg)]"
-            >
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--accent-subtle)] text-xs font-bold text-[var(--accent)]">
-                JD
-              </span>
-              <span className="hidden sm:block">
-                <span className="block text-xs font-semibold">
-                  {account?.name ?? "Account"}
-                </span>
-                <span className="block text-[11px] text-[var(--text-muted)]">
-                  {role} · Development role switch
-                </span>
-              </span>
-              <ChevronDown size={14} className="text-[var(--text-muted)]" />
-            </button>
-            <button
-              onClick={signOut}
-              aria-label="Sign out"
-              className="rounded-lg p-2 text-[var(--text-muted)] hover:bg-[var(--bg)]"
-              title="Sign out"
-            >
-              <LogOut size={17} />
-            </button>
-          </div>
-        </header>
-
-        {menuOpen && (
-          <div className="border-b border-[var(--border)] bg-[var(--surface)] p-4 lg:hidden">
-            <div className="grid grid-cols-2 gap-1">
-              {navGroups
-                .flatMap((group) => group.items)
-                .map((item) => (
-                  <button
-                    key={item.label}
-                    onClick={() => {
-                      selectPage(item.label);
-                    }}
-                    className="rounded-lg px-3 py-2 text-left text-sm text-[var(--text-muted)] hover:bg-[var(--bg)]"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-            </div>
-          </div>
-        )}
+      <div className="grid min-h-screen grid-cols-1 grid-rows-[5rem_auto] lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <Header role={role} accountName={account?.name} branch={account?.branch} now={now} visible={headerVisible} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((open) => !open)} onRoleSwitch={handleRoleSwitch} onSignOut={signOut} onNavigate={selectPage} />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden={!menuOpen || isDesktop}
+          aria-label="Dismiss navigation backdrop"
+          onClick={() => setMenuOpen(false)}
+          className={`fixed inset-x-0 bottom-0 top-20 z-40 bg-black/40 transition-opacity duration-250 ease-in-out motion-reduce:transition-none lg:hidden ${menuOpen && !isDesktop ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        />
+        <Sidebar navGroups={navGroups} currentPage={currentPage} onNavigate={selectPage} icons={icons} open={menuOpen} />
+        <main className="min-w-0 lg:col-start-2 lg:row-start-2">
         <PageContainer>
           {currentPage === "Customers" ? (
             <CustomersPage isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} openCreateSignal={customerCreateSignal} openCustomerId={openCustomerId} />
@@ -369,7 +284,8 @@ function App() {
             <FrontDeskDashboardPage branch={account?.branch} onAction={handleAction} />
           )}
         </PageContainer>
-      </main>
+        </main>
+      </div>
       {notice && (
         <div className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-lg bg-[var(--text)] px-4 py-3 text-sm text-[var(--surface)] shadow-xl">
           <Check size={16} className="text-emerald-400" />

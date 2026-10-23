@@ -19,9 +19,37 @@ export default function RFIDKeyfobsPage({ isAdmin, branch: assignedBranch = "Mak
   const close = () => { setAssigning(false); setCustomer(""); };
   const confirmAssignment = () => { if (!available || !customer.trim()) return; assignKeyfob(available.id, customer.trim(), available.branch); close(); onAction("Keyfob assigned"); };
   return <div>
-    <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold tracking-tight">RFID Keyfobs</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Assign, replace, and deactivate branch keyfobs.</p></div><button onClick={() => setAssigning(true)} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]"><Plus size={16} /> Assign keyfob</button></div>
-    <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[["Total keyfobs", rows.length], ["Assigned", rows.filter((row) => row.status === "Assigned").length], ["Unassigned", rows.filter((row) => row.status === "Unassigned").length], ["Deactivated", rows.filter((row) => row.status === "Deactivated").length]].map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></div>)}</div>
-    <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"><div className="flex flex-wrap gap-2 border-b border-[var(--border)] p-4 sm:p-5"><label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2"><Search size={14} className="text-[var(--text-muted)]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search keyfobs or customers" className="w-44 bg-transparent text-xs outline-none" /></label>{isAdmin && <FilterSelect value={branch} onChange={setBranch} options={["All branches", "Makati Central", "BGC High Street", "Cebu IT Park", "Quezon Avenue"]} />}<FilterSelect value={status} onChange={setStatus} options={["All statuses", "Assigned", "Unassigned", "Deactivated"]} /></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]"><tr>{["Keyfob ID", "RFID identifier", "Assigned customer", "Branch", "Status", "Assigned date", ""].map((label) => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[var(--border)]">{rows.map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium">{row.id}</td><td className="px-5 py-4 font-mono text-[var(--text-muted)]">{row.uid}</td><td className="px-5 py-4">{row.customer}</td><td className="px-5 py-4 text-[var(--text-muted)]">{row.branch}</td><td className="px-5 py-4"><span className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(row.status)}`}>{row.status}</span></td><td className="px-5 py-4 text-[var(--text-muted)]">{row.date}</td><td className="px-5 py-4 text-right">{row.status === "Assigned" ? <button onClick={() => { deactivateKeyfob(row.id); onAction("Keyfob deactivated"); }} className="font-semibold text-red-600">Deactivate</button> : row.status === "Unassigned" ? <button onClick={() => setAssigning(true)} className="font-semibold text-[var(--accent)]">Assign</button> : <span className="text-[var(--text-muted)]">History</span>}</td></tr>)}</tbody></table>{rows.length === 0 && <p className="p-10 text-center text-sm text-[var(--text-muted)]">No keyfobs match the current filters.</p>}</div></section>
+    <div className="page-header page-header--actions"><div><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold tracking-tight">RFID Keyfobs</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Assign, replace, and deactivate branch keyfobs.</p></div><div className="page-header-actions"><button onClick={() => setAssigning(true)} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]"><Plus size={16} /> Assign keyfob</button></div></div>
+    <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[["Total keyfobs", rows.length], ["Assigned", rows.filter((row) => row.status === "Assigned").length], ["Unassigned", rows.filter((row) => row.status === "Unassigned").length], ["Deactivated", rows.filter((row) => row.status === "Deactivated").length]].map(([label, value]) => <div key={label} className="summary-card"><p className="summary-card-label">{label}</p><p className="summary-card-value">{value}</p></div>)}</div>
+    <section className="data-table-section">
+      <div className="data-table-toolbar flex flex-wrap items-center gap-2">
+        <label className="flex min-w-[210px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
+          <Search size={14} className="text-[var(--text-muted)]" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search keyfobs or customers" className="w-full bg-transparent text-xs outline-none" />
+        </label>
+        {isAdmin && <FilterSelect value={branch} onChange={setBranch} options={["All branches", "Makati Central", "BGC High Street", "Cebu IT Park", "Quezon Avenue"]} />}
+        <FilterSelect value={status} onChange={setStatus} options={["All statuses", "Assigned", "Unassigned", "Deactivated"]} />
+      </div>
+      <div className="table-viewport overflow-x-auto">
+        <table className="data-table min-w-[760px]">
+          <thead>
+            <tr>{["Keyfob ID", "RFID identifier", "Assigned customer", "Branch", "Status", "Assigned date", ""].map((label) => <th key={label}>{label}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--border)]">
+            {rows.map((row) => <tr key={row.id}>
+              <td className="font-medium">{row.id}</td>
+              <td className="font-mono text-[var(--text-muted)]">{row.uid}</td>
+              <td>{row.customer}</td>
+              <td className="text-[var(--text-muted)]">{row.branch}</td>
+              <td><span className={`rounded-full px-2 py-1 text-[11px] font-medium ${badge(row.status)}`}>{row.status}</span></td>
+              <td className="text-[var(--text-muted)]">{row.date}</td>
+              <td className="text-right">{row.status === "Assigned" ? <button onClick={() => { deactivateKeyfob(row.id); onAction("Keyfob deactivated"); }} className="font-semibold text-red-600">Deactivate</button> : row.status === "Unassigned" ? <button onClick={() => setAssigning(true)} className="font-semibold text-[var(--accent)]">Assign</button> : <span className="text-[var(--text-muted)]">History</span>}</td>
+            </tr>)}
+          </tbody>
+        </table>
+        {rows.length === 0 && <p className="p-10 text-center text-sm text-[var(--text-muted)]">No keyfobs match the current filters.</p>}
+      </div>
+    </section>
     {assigning && <Modal label="Assign RFID keyfob" onClose={close}><div className="pr-8"><h2 className="text-xl font-bold">Assign keyfob</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Available reader: {available?.id ?? "None available"}</p></div><div className="mt-5"><label className="block text-xs font-medium">Customer<input value={customer} onChange={(event) => setCustomer(event.target.value)} placeholder="Search customer" className="mt-1.5 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm" /></label><button disabled={!customer.trim() || !available} onClick={confirmAssignment} className="mt-5 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)] disabled:opacity-40">Confirm assignment</button></div></Modal>}
   </div>;
 }

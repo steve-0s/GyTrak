@@ -133,14 +133,14 @@ export default function AdminDashboardPage({ onAction }: Props) {
 
   return (
     <div>
-      <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Overview of gym operations and business performance.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="page-header-actions">
           <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
             <CalendarDays size={15} className="text-[var(--text-muted)]" />
             <select
@@ -184,13 +184,11 @@ export default function AdminDashboardPage({ onAction }: Props) {
         {cards.map(([label, value, context, positive]) => (
           <div
             key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4"
+            className="summary-card"
           >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-2 text-xl font-bold tracking-tight">{value}</p>
-            <p
-              className={`mt-1 text-[11px] ${positive ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}`}
-            >
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
+            <p className={`summary-card-context ${positive ? "summary-card-context--positive" : ""}`}>
               {context}
             </p>
           </div>
@@ -315,7 +313,7 @@ export default function AdminDashboardPage({ onAction }: Props) {
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-xs">
+            <table className="data-table data-table--compact min-w-[760px]">
               <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
                 <tr>
                   {[
@@ -447,7 +445,7 @@ export default function AdminDashboardPage({ onAction }: Props) {
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] text-left text-xs">
+            <table className="data-table data-table--compact min-w-[600px]">
               <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Activity</th>

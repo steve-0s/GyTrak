@@ -87,7 +87,7 @@ export default function AdministrationPages({
     );
   return (
     <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             Administration
@@ -107,6 +107,7 @@ export default function AdministrationPages({
                 : "Review traceable administrative and operational changes."}
           </p>
         </div>
+        <div className="page-header-actions">
         {view === "branches" && (
           <button
             onClick={() =>
@@ -143,6 +144,7 @@ export default function AdministrationPages({
             <Plus size={16} /> Create account
           </button>
         )}
+        </div>
       </div>
       <div className="mb-5 flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-sm">
         <Tab active={view === "branches"} onClick={() => setView("branches")}>
@@ -263,7 +265,7 @@ function BranchList({
           />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] text-left text-xs">
+          <table className="data-table data-table--compact min-w-[850px]">
             <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
               <tr>
                 {[
@@ -342,7 +344,7 @@ function BranchDetails({
       >
         <ArrowLeft size={16} /> Back to branches
       </button>
-      <div className="mb-6 flex justify-between">
+      <div className="page-header page-header--actions page-header--top">
         <div>
           <p className="mb-1 text-sm text-[var(--accent)]">Branch details</p>
           <h2 className="text-2xl font-bold">{branch.name}</h2>
@@ -365,10 +367,10 @@ function BranchDetails({
         ].map(([label, value]) => (
           <div
             key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4"
+            className="summary-card"
           >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-2 text-xl font-bold">{value}</p>
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
           </div>
         ))}
       </div>
@@ -551,7 +553,7 @@ function AccountList({
         />
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[750px] text-left text-xs">
+        <table className="data-table data-table--compact min-w-[750px]">
           <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
             <tr>
               {[
@@ -667,7 +669,7 @@ function AuditList({
         />
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-xs">
+        <table className="data-table data-table--compact min-w-[900px]">
           <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
             <tr>
               {[
@@ -839,7 +841,7 @@ function FormShell({
           <ArrowLeft size={16} /> Back
         </button>
       )}
-      <div className="mb-6">
+      <div className="page-header">
         <h2 className="text-2xl font-bold">{title}</h2>
         <p className="mt-1 text-sm text-[var(--text-muted)]">{subtitle}</p>
       </div>

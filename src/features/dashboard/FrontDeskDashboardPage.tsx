@@ -60,16 +60,17 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
 
   return (
     <div>
-      <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             {branch}
           </p>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Today’s branch activity and tasks.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="page-header-actions">
           <button
             onClick={() => onAction("Walk-in registration opened")}
             className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
@@ -94,11 +95,11 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
         {stats.map(([label, value, context]) => (
           <div
             key={label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4"
+            className="summary-card"
           >
-            <p className="text-xs text-[var(--text-muted)]">{label}</p>
-            <p className="mt-2 text-xl font-bold tracking-tight">{value}</p>
-            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+            <p className="summary-card-label">{label}</p>
+            <p className="summary-card-value">{value}</p>
+            <p className="summary-card-context">
               {context}
             </p>
           </div>
@@ -260,7 +261,7 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-xs">
+          <table className="data-table data-table--compact min-w-[720px]">
             <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
               <tr>
                 {[
@@ -329,7 +330,7 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
         </div>
       </section>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[.95fr_1.05fr]">
+      <div className="mt-5 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[.95fr_1.05fr]">
         <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
             <div>
@@ -346,7 +347,7 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[440px] text-left text-xs">
+            <table className="data-table data-table--compact min-w-[440px]">
               <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Customer</th>

@@ -109,7 +109,7 @@ export default function AttendancePage({ isAdmin, branch: assignedBranch = "Maka
   );
 }
 
-function PageHeader({ branch }: { branch: string }) { return <div className="mb-6"><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold tracking-tight">Attendance History</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Review check-ins, correct records, and maintain a traceable attendance history.</p></div>; }
+function PageHeader({ branch }: { branch: string }) { return <div className="page-header"><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold tracking-tight">Attendance History</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Review check-ins, correct records, and maintain a traceable attendance history.</p></div>; }
 function Stat({ label, value }: { label: string; value: number }) { return <div className="summary-card"><p className="summary-card-label">{label}</p><p className="summary-card-value">{value}</p></div>; }
 
 function AttendanceDetails({ event, customer, onBack, onSave, onOpenCustomer }: { event: VisitRecord; customer?: Customer; onBack: () => void; onSave: (event: VisitRecord, action: string) => void; onOpenCustomer?: (customerId: string) => void }) {

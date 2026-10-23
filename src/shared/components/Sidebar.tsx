@@ -6,6 +6,7 @@ type Props = {
   currentPage: string;
   onNavigate: (page: string) => void;
   icons: Record<string, LucideIcon>;
+  open: boolean;
 };
 
 export default function Sidebar({
@@ -13,9 +14,16 @@ export default function Sidebar({
   currentPage,
   onNavigate,
   icons,
+  open,
 }: Props) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col">
+    <aside
+      id="app-sidebar"
+      aria-label="Primary navigation"
+      aria-hidden={!open}
+      inert={!open}
+      className={`fixed bottom-0 left-0 right-auto top-20 z-50 flex h-[calc(100dvh-5rem)] w-64 flex-col overflow-y-auto border-r border-[var(--border)] bg-[var(--surface)] shadow-xl transition-transform duration-250 ease-in-out motion-reduce:transition-none ${open ? "translate-x-0" : "-translate-x-full"} lg:sticky lg:inset-auto lg:top-0 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-screen lg:w-64 lg:shadow-none lg:translate-x-0`}
+    >
       <div className="flex h-20 items-center gap-3 border-b border-[var(--border)] px-7">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)] text-[var(--on-accent)]">
           <Activity size={19} />

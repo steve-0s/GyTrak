@@ -181,7 +181,7 @@ export default function WalkInsMembershipsPage({
     );
   return (
     <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             {scopedBranch}
@@ -195,7 +195,7 @@ export default function WalkInsMembershipsPage({
               : "Track active plans, renewals, and membership status."}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="page-header-actions">
           {view === "memberships" && (
             <button
               onClick={() => setView("plans")}

@@ -93,7 +93,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
   };
   return (
     <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">
             {isAdmin ? "Business intelligence" : assignedBranch}
@@ -105,12 +105,14 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
             Use focused reports to answer operational and business questions.
           </p>
         </div>
+        <div className="page-header-actions">
         <button
           onClick={exportReport}
-          className="flex items-center gap-2 self-start rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] xl:self-auto"
+          className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]"
         >
           <Download size={16} /> Export CSV
         </button>
+        </div>
       </div>
       <div className="mb-6 flex flex-wrap gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
         <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
@@ -544,7 +546,7 @@ function ReportTable({
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-left text-xs">
+        <table className="data-table data-table--compact min-w-[560px]">
           <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
             <tr>
               {columns.map((column) => (

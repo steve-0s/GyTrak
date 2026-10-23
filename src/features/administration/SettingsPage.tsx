@@ -102,7 +102,7 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="page-header">
         <p className="mb-1 text-sm font-medium text-[var(--accent)]">{isAdmin ? "Administration" : "Front Desk"}</p>
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="mt-1 text-sm text-[var(--text-muted)]">Manage {isAdmin ? "system, appearance, regional formatting, and account security." : "your workstation preferences and account information."}</p>

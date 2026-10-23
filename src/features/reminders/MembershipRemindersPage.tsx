@@ -19,10 +19,52 @@ export default function MembershipRemindersPage({ isAdmin, branch: assignedBranc
   const metrics = { upcoming: scoped.filter((m) => { const d = daysUntil(m.end); return d !== null && d > 0 && d <= 7; }).length, due: scoped.filter((m) => daysUntil(m.end) === 0).length, overdue: scoped.filter((m) => { const d = daysUntil(m.end); return d !== null && d < 0; }).length, manual: reminderRecords.filter((r) => r.source === "manual").length, automatic: reminderRecords.filter((r) => r.source === "simulated automatic").length, skipped: reminderRecords.filter((r) => r.status === "Skipped" || r.status === "Failed").length, missing: scoped.filter((m) => { const c = customers.find((x) => x.id === m.customerId); return !c?.email && !c?.phone; }).length };
   const eligible = (m: Membership) => { const d = daysUntil(m.end); return d !== null && Boolean(reminderStage(d)); };
   return <div>
-    <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold">Membership reminders</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Manage scheduled member follow-ups, contact channels, and reminder activity.</p></div><button onClick={() => setShowHistory(true)} className="rounded-lg border border-[var(--border)] px-3.5 py-2 text-sm font-semibold">View history ({reminderRecords.length})</button></div>
-    <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{[["Upcoming", metrics.upcoming], ["Due today", metrics.due], ["Overdue", metrics.overdue], ["Manual sent", metrics.manual], ["Simulated", metrics.automatic], ["Skipped / failed", metrics.skipped], ["Missing contact", metrics.missing]].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p></div>)}</div>
-    <div className="mb-4 flex flex-wrap gap-2"><label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2"><Search size={15} className="text-[var(--text-muted)]"/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search member, plan, branch" className="w-full bg-transparent text-sm outline-none"/></label><select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">{stages.map(([label]) => <option key={label}>{label}</option>)}<option>Paid</option><option>Unpaid</option></select>{isAdmin ? <select value={branch} onChange={(e) => setBranch(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"><option>All branches</option>{branches.filter((b) => b.status === "Active").map((b) => <option key={b.id}>{b.name}</option>)}</select> : <span className="rounded-lg bg-[var(--accent-subtle)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">Assigned branch · {assignedBranch}</span>}</div>
-    <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="border-b border-[var(--border)] text-xs text-[var(--text-muted)]"><tr>{["Member", "Plan", "Branch", "Expiration", "Status", "Payment", "Contact", "Next stage", "Last reminder", "Action"].map((h) => <th key={h} className="px-4 py-3 font-medium">{h}</th>)}</tr></thead><tbody>{rows.map((m) => { const c = customers.find((x) => x.id === m.customerId); const d = daysUntil(m.end); const stage = d === null ? null : reminderStage(d); const last = reminderRecords.find((r) => r.membershipId === m.id); return <tr key={m.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg)]"><td className="px-4 py-3"><button onClick={() => setSelected(m)} className="font-semibold text-[var(--accent)] hover:underline">{m.customer}</button><p className="text-xs text-[var(--text-muted)]">{m.id}</p></td><td className="px-4 py-3">{m.plan}</td><td className="px-4 py-3">{m.branch}</td><td className="px-4 py-3">{m.end}</td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs ${badge(stage ?? m.status)}`}>{stage ?? m.status}</span></td><td className="px-4 py-3">{m.payment}</td><td className="px-4 py-3 text-xs">{c?.email ? "Email" : ""}{c?.email && c?.phone ? " · " : ""}{c?.phone ? "Phone" : "—"}</td><td className="px-4 py-3 text-xs">{eligible(m) ? stage : "Not scheduled"}</td><td className="px-4 py-3 text-xs text-[var(--text-muted)]">{last ? new Date(last.attemptedAt).toLocaleDateString("en-PH") : "—"}</td><td className="px-4 py-3"><button disabled={!c || (!c.email && !c.phone)} onClick={() => setSelected(m)} className="rounded-lg bg-[var(--accent)] px-2.5 py-1.5 text-xs font-semibold text-[var(--on-accent)] disabled:cursor-not-allowed disabled:opacity-40">Send reminder</button></td></tr>})}</tbody></table>{!rows.length && <div className="p-10 text-center text-sm text-[var(--text-muted)]">No memberships match this filter.</div>}</div>
+    <div className="page-header page-header--actions"><div><p className="mb-1 text-sm font-medium text-[var(--accent)]">{branch}</p><h2 className="text-2xl font-bold">Membership reminders</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Manage scheduled member follow-ups, contact channels, and reminder activity.</p></div><div className="page-header-actions"><button onClick={() => setShowHistory(true)} className="rounded-lg border border-[var(--border)] px-3.5 py-2 text-sm font-semibold">View history ({reminderRecords.length})</button></div></div>
+    <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{[["Upcoming", metrics.upcoming], ["Due today", metrics.due], ["Overdue", metrics.overdue], ["Manual sent", metrics.manual], ["Simulated", metrics.automatic], ["Skipped / failed", metrics.skipped], ["Missing contact", metrics.missing]].map(([label, value]) => <div key={String(label)} className="summary-card"><p className="summary-card-label">{label}</p><p className="summary-card-value">{value}</p></div>)}</div>
+    <section className="data-table-section">
+      <div className="data-table-toolbar flex flex-wrap gap-2">
+        <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+          <Search size={15} className="text-[var(--text-muted)]" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search member, plan, branch" className="w-full bg-transparent text-sm outline-none" />
+        </label>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+          {stages.map(([label]) => <option key={label}>{label}</option>)}
+          <option>Paid</option><option>Unpaid</option>
+        </select>
+        {isAdmin ? (
+          <select value={branch} onChange={(e) => setBranch(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+            <option>All branches</option>
+            {branches.filter((b) => b.status === "Active").map((b) => <option key={b.id}>{b.name}</option>)}
+          </select>
+        ) : (
+          <span className="rounded-lg bg-[var(--accent-subtle)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">Assigned branch · {assignedBranch}</span>
+        )}
+      </div>
+      <div className="table-viewport overflow-x-auto">
+        <table className="data-table data-table--compact min-w-[1050px]">
+          <thead><tr>{["Member", "Plan", "Branch", "Expiration", "Status", "Payment", "Contact", "Next stage", "Last reminder", "Action"].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-[var(--border)]">
+            {rows.map((m) => {
+              const c = customers.find((x) => x.id === m.customerId);
+              const d = daysUntil(m.end);
+              const stage = d === null ? null : reminderStage(d);
+              const last = reminderRecords.find((r) => r.membershipId === m.id);
+              return <tr key={m.id} className="hover:bg-[var(--bg)]">
+                <td><button onClick={() => setSelected(m)} className="font-semibold text-[var(--accent)] hover:underline">{m.customer}</button><p className="text-xs text-[var(--text-muted)]">{m.id}</p></td>
+                <td>{m.plan}</td><td>{m.branch}</td><td>{m.end}</td>
+                <td><span className={`rounded-full px-2 py-1 text-xs ${badge(stage ?? m.status)}`}>{stage ?? m.status}</span></td>
+                <td>{m.payment}</td>
+                <td className="text-xs">{c?.email ? "Email" : ""}{c?.email && c?.phone ? " · " : ""}{c?.phone ? "Phone" : "—"}</td>
+                <td className="text-xs">{eligible(m) ? stage : "Not scheduled"}</td>
+                <td className="text-xs text-[var(--text-muted)]">{last ? new Date(last.attemptedAt).toLocaleDateString("en-PH") : "—"}</td>
+                <td><button disabled={!c || (!c.email && !c.phone)} onClick={() => setSelected(m)} className="rounded-lg bg-[var(--accent)] px-2.5 py-1.5 text-xs font-semibold text-[var(--on-accent)] disabled:cursor-not-allowed disabled:opacity-40">Send reminder</button></td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+        {!rows.length && <div className="p-10 text-center text-sm text-[var(--text-muted)]">No memberships match this filter.</div>}
+      </div>
+    </section>
     {selected && <ReminderModal membership={selected} customers={customers} payments={payments} settings={reminderSettings} userId={account?.id} role={role} onClose={() => setSelected(null)} onSend={(record) => { addReminder(record); setSelected(null); onAction("Reminder simulated — no email or SMS was sent"); }} />}
     {showHistory && <HistoryModal records={reminderRecords.filter((r) => branch === "All branches" || r.branch === branch)} onClose={() => setShowHistory(false)} />}
   </div>;

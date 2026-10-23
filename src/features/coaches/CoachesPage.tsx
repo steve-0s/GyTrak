@@ -76,15 +76,17 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
 
   return (
     <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div className="page-header page-header--actions">
         <div>
           <p className="mb-1 text-sm font-medium text-[var(--accent)]">{isAdmin ? "All branches" : assignedBranch}</p>
           <h2 className="text-2xl font-bold">Coaches</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">Manage coach records and branch assignments.</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]">
+        <div className="page-header-actions">
+        <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]">
           <Plus size={16} /> Add coach
         </button>
+        </div>
       </div>
 
       {formOpen && (
@@ -102,26 +104,26 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
         </Modal>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="flex flex-wrap gap-2 border-b border-[var(--border)] p-4">
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
+      <section className="data-table-section">
+        <div className="data-table-toolbar flex flex-wrap items-center gap-2">
+          <label className="flex min-w-[210px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
             <Search size={15} className="text-[var(--text-muted)]" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search coaches" className="bg-transparent text-sm outline-none" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search coaches" className="w-full bg-transparent text-sm outline-none" />
           </label>
-          {isAdmin && <select value={branch} onChange={(event) => setBranch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-xs"><option>All branches</option><option>Makati Central</option><option>BGC High Street</option><option>Cebu IT Park</option></select>}
+          {isAdmin && <select value={branch} onChange={(event) => setBranch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs"><option>All branches</option><option>Makati Central</option><option>BGC High Street</option><option>Cebu IT Park</option></select>}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-xs">
-            <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]"><tr>{["Coach ID", "Name", "Specialty", "Branch", "Contact", "Status", "Actions"].map((label) => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead>
+        <div className="table-viewport overflow-x-auto">
+          <table className="data-table min-w-[760px]">
+            <thead><tr>{["Coach ID", "Name", "Specialty", "Branch", "Contact", "Status", "Actions"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {rows.map((coach) => <tr key={coach.id}>
-                <td className="px-5 py-4 font-mono text-[var(--text-muted)]">{coach.id}</td>
-                <td className="px-5 py-4 font-semibold">{coach.name}</td>
-                <td className="px-5 py-4">{coach.specialty}</td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">{coach.branch}</td>
-                <td className="px-5 py-4 text-[var(--text-muted)]">{coach.phone}</td>
-                <td className="px-5 py-4"><button onClick={() => toggleStatus(coach)} className="font-medium text-[var(--accent)]">{coach.status}</button></td>
-                <td className="px-5 py-4 text-right"><div className="group relative inline-block"><button aria-label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]"><MoreHorizontal size={17} /></button><div className="invisible absolute right-0 z-10 mt-1 w-32 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-left shadow-lg group-focus-within:visible group-hover:visible"><button onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button onClick={() => remove(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button></div></div></td>
+              {rows.map((coach) => <tr key={coach.id} className="hover:bg-[var(--bg)]">
+                <td className="font-mono text-[var(--text-muted)]">{coach.id}</td>
+                <td className="font-semibold">{coach.name}</td>
+                <td>{coach.specialty}</td>
+                <td className="text-[var(--text-muted)]">{coach.branch}</td>
+                <td className="text-[var(--text-muted)]">{coach.phone}</td>
+                <td><button onClick={() => toggleStatus(coach)} className="font-medium text-[var(--accent)]">{coach.status}</button></td>
+                <td className="text-right"><div className="group relative inline-block"><button aria-label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]"><MoreHorizontal size={17} /></button><div className="invisible absolute right-0 z-10 mt-1 w-32 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-left shadow-lg group-focus-within:visible group-hover:visible"><button onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button onClick={() => remove(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button></div></div></td>
               </tr>)}
             </tbody>
           </table>
