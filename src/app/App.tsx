@@ -88,8 +88,10 @@ function App() {
   const [headerVisible, setHeaderVisible] = useState(true);
   const [customerCreateSignal, setCustomerCreateSignal] = useState(0);
   const [walkInCreateSignal, setWalkInCreateSignal] = useState(0);
+  const [membershipCreateSignal, setMembershipCreateSignal] = useState(0);
   const [attendanceSignal, setAttendanceSignal] = useState(0);
   const [openCustomerId, setOpenCustomerId] = useState<string | null>(null);
+  const [openMembershipId, setOpenMembershipId] = useState<string | null>(null);
   const drawerWasOpen = useRef(false);
   const navGroups = getNavigationGroups(role, account?.branch);
   const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
@@ -181,6 +183,7 @@ function App() {
       ["Scanner status opened", "Scanner and Sync Status"],
       ["Detailed sync status opened", "Scanner and Sync Status"],
       ["Walk-in registration opened", "Walk-ins & Memberships"],
+      ["Membership creation opened", "Walk-ins & Memberships"],
       ["Memberships opened", "Walk-ins & Memberships"],
       ["Expiring memberships opened", "Walk-ins & Memberships"],
       ["Membership reminders opened", "Membership Reminders"],
@@ -192,6 +195,7 @@ function App() {
     ];
     if (message === "New customer form opened") setCustomerCreateSignal((value) => value + 1);
     if (message === "Walk-in registration opened") setWalkInCreateSignal((value) => value + 1);
+    if (message === "Membership creation opened") setMembershipCreateSignal((value) => value + 1);
     if (["Attendance records opened", "Attendance correction opened", "Manual attendance form opened", "Complete attendance page opened"].includes(message)) setAttendanceSignal((value) => value + 1);
     if (message.endsWith(" attendance details opened")) { setAttendanceSignal((value) => value + 1); selectPage("Walk-ins & Memberships"); }
     if (message.endsWith(" payment follow-up opened")) selectPage("Walk-ins & Memberships");
@@ -250,8 +254,11 @@ function App() {
               branch={account?.branch}
               onAction={handleAction}
               onOpenCustomer={(customerId) => { setOpenCustomerId(customerId); selectPage("Customers"); }}
+              openMembershipId={openMembershipId}
+              onMembershipOpened={() => setOpenMembershipId(null)}
               initialView="overview"
               openWalkInSignal={walkInCreateSignal}
+              openMembershipSignal={membershipCreateSignal}
               openAttendanceSignal={attendanceSignal}
               onAttendanceSignalConsumed={() => setAttendanceSignal(0)}
             />
@@ -279,9 +286,9 @@ function App() {
               onAction={() => handleAction(`${currentPage} workflow opened`)}
             />
           ) : isAdmin ? (
-            <AdminDashboardPage onAction={handleAction} />
+            <AdminDashboardPage onAction={handleAction} onOpenMembership={(membershipId) => { setOpenMembershipId(membershipId); selectPage("Walk-ins & Memberships"); }} />
           ) : (
-            <FrontDeskDashboardPage branch={account?.branch} onAction={handleAction} />
+            <FrontDeskDashboardPage branch={account?.branch} onAction={handleAction} onOpenMembership={(membershipId) => { setOpenMembershipId(membershipId); selectPage("Walk-ins & Memberships"); }} />
           )}
         </PageContainer>
         </main>

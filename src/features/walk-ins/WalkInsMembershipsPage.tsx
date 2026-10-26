@@ -11,10 +11,11 @@ import { addBillingMonths, durationToMonths, membershipDueState } from "../../li
 import Modal from "../../components/shared/Modal";
 import OverlayDropdown from "../../components/shared/OverlayDropdown";
 import FilterSelect from "../../components/shared/FilterSelect";
+import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import ManualAttendanceModal from "../../components/modals/ManualAttendanceModal";
 import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
-import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, PaymentRecord, ServicePrice, VisitRecord } from "../../types";
+import type { Customer as SharedCustomer, Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, PaymentRecord, ServicePrice, VisitRecord } from "../../types";
 import { CustomerForm, type Customer } from "../customers/CustomersPage";
 import { planPricingSummary, priceForCustomer, membershipPrice } from "../../lib/pricing";
 import AttendancePage from "../attendance/AttendancePage";
@@ -42,6 +43,9 @@ type Props = {
   onOpenCustomer?: (customerId: string) => void;
   initialView?: "overview" | "walkins" | "memberships" | "attendance";
   openWalkInSignal?: number;
+  openMembershipSignal?: number;
+  openMembershipId?: string | null;
+  onMembershipOpened?: () => void;
   openAttendanceSignal?: number;
   onAttendanceSignalConsumed?: () => void;
 };
@@ -62,6 +66,9 @@ export default function WalkInsMembershipsPage({
   onOpenCustomer,
   initialView = "overview",
   openWalkInSignal = 0,
+  openMembershipSignal = 0,
+  openMembershipId,
+  onMembershipOpened,
   openAttendanceSignal = 0,
   onAttendanceSignalConsumed,
 }: Props) {
@@ -79,6 +86,7 @@ export default function WalkInsMembershipsPage({
   const [membershipForm, setMembershipForm] = useState(false);
   const [manualAttendanceForm, setManualAttendanceForm] = useState(false);
   const [query, setQuery] = useState("");
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : assignedBranch);
   const activeBranches = branches.filter((item) => item.status === "Active");
@@ -95,6 +103,22 @@ export default function WalkInsMembershipsPage({
     if (openWalkInSignal) setWalkInForm(true);
   }, [openWalkInSignal]);
   useEffect(() => {
+    if (openMembershipSignal) {
+      setView("memberships");
+      setMembershipForm(true);
+    }
+  }, [openMembershipSignal]);
+  useEffect(() => {
+    if (!openMembershipId) return;
+    const membership = memberships.find((item) => item.id === openMembershipId);
+    if (membership) {
+      setView("memberships");
+      setSelectedMembership(membership);
+    } else {
+      onMembershipOpened?.();
+    }
+  }, [memberships, openMembershipId]);
+  useEffect(() => {
     if (openAttendanceSignal) {
       setView("attendance");
       onAttendanceSignalConsumed?.();
@@ -108,18 +132,16 @@ export default function WalkInsMembershipsPage({
   );
   const filteredWalkIns = scopedWalkIns.filter(
     (item) =>
-      `${item.customer} ${item.id}`
-        .toLowerCase()
-        .includes(query.toLowerCase()) &&
+      (!customerFilterId || item.customerId === customerFilterId) &&
+      item.id.toLowerCase().includes(query.toLowerCase()) &&
       (status === "All statuses" ||
         item.payment === status ||
         item.status === status),
   );
   const filteredMemberships = scopedMemberships.filter(
     (item) =>
-      `${item.customer} ${item.id}`
-        .toLowerCase()
-        .includes(query.toLowerCase()) &&
+      (!customerFilterId || item.customerId === customerFilterId) &&
+      item.id.toLowerCase().includes(query.toLowerCase()) &&
       (status === "All statuses" ||
         item.status === status ||
         item.payment === status),
@@ -151,7 +173,10 @@ export default function WalkInsMembershipsPage({
           recordMembershipPayment(selectedMembership.id, payment);
           setSelectedMembership({ ...selectedMembership, payment: "Paid", status: selectedMembership.status === "Expired" ? "Active" : selectedMembership.status, end: addBillingMonths(selectedMembership.end, durationToMonths(selectedMembership.plan)) });
         }}
-        onBack={() => setSelectedMembership(null)}
+        onBack={() => {
+          setSelectedMembership(null);
+          onMembershipOpened?.();
+        }}
         onUpdate={(updated) => {
           updateMembership(updated);
           setSelectedMembership(updated);
@@ -238,12 +263,14 @@ export default function WalkInsMembershipsPage({
           payments={payments}
           branch={isAdmin ? scopedBranch : undefined}
           branches={isAdmin ? activeBranchNames : undefined}
-          onBranchChange={isAdmin ? setScopedBranch : undefined}
+          onBranchChange={isAdmin ? (value) => { setScopedBranch(value); setCustomerFilterId(""); } : undefined}
           onSelectVisit={(visit) => { setInitialAttendanceVisitId(visit.id); setView("attendance"); }}
         />
       ) : view === "walkins" ? (
         <WalkInList
           customers={customers}
+          customerFilterId={customerFilterId}
+          onCustomerFilterChange={setCustomerFilterId}
           rows={filteredWalkIns}
           allRows={scopedWalkIns}
           query={query}
@@ -252,7 +279,7 @@ export default function WalkInsMembershipsPage({
           setStatus={setStatus}
           branch={isAdmin ? scopedBranch : undefined}
           branches={isAdmin ? activeBranchNames : undefined}
-          onBranchChange={isAdmin ? setScopedBranch : undefined}
+          onBranchChange={isAdmin ? (value) => { setScopedBranch(value); setCustomerFilterId(""); } : undefined}
           onSelect={setSelectedWalkIn}
           onDelete={(row) => {
             if (window.confirm(`Delete walk-in ${row.id}?`)) {
@@ -263,6 +290,9 @@ export default function WalkInsMembershipsPage({
         />
       ) : (
         <MembershipList
+          customers={customers}
+          customerFilterId={customerFilterId}
+          onCustomerFilterChange={setCustomerFilterId}
           rows={filteredMemberships}
           allRows={scopedMemberships}
           query={query}
@@ -271,7 +301,7 @@ export default function WalkInsMembershipsPage({
           setStatus={setStatus}
           branch={isAdmin ? scopedBranch : undefined}
           branches={isAdmin ? activeBranchNames : undefined}
-          onBranchChange={isAdmin ? setScopedBranch : undefined}
+          onBranchChange={isAdmin ? (value) => { setScopedBranch(value); setCustomerFilterId(""); } : undefined}
           onSelect={setSelectedMembership}
           onDelete={(row) => {
             if (window.confirm(`Delete membership ${row.id}?`)) {
@@ -481,6 +511,8 @@ function UnifiedOverview({
 
 function WalkInList({
   customers,
+  customerFilterId,
+  onCustomerFilterChange,
   rows,
   allRows,
   query,
@@ -493,7 +525,9 @@ function WalkInList({
   onSelect,
   onDelete,
 }: {
-  customers: Array<{ id: string }>;
+  customers: SharedCustomer[];
+  customerFilterId: string;
+  onCustomerFilterChange: (customerId: string) => void;
   rows: WalkIn[];
   allRows: WalkIn[];
   query: string;
@@ -543,6 +577,9 @@ function WalkInList({
       </div>
       <DataTable
         title="Walk-in visits"
+        customers={customers}
+        customerFilterId={customerFilterId}
+        onCustomerFilterChange={onCustomerFilterChange}
         query={query}
         setQuery={setQuery}
         status={status}
@@ -620,6 +657,9 @@ function WalkInList({
 }
 
 function MembershipList({
+  customers,
+  customerFilterId,
+  onCustomerFilterChange,
   rows,
   allRows,
   query,
@@ -632,6 +672,9 @@ function MembershipList({
   onSelect,
   onDelete,
 }: {
+  customers: SharedCustomer[];
+  customerFilterId: string;
+  onCustomerFilterChange: (customerId: string) => void;
   rows: Membership[];
   allRows: Membership[];
   query: string;
@@ -677,6 +720,9 @@ function MembershipList({
       </div>
       <DataTable
         title="Membership records"
+        customers={customers}
+        customerFilterId={customerFilterId}
+        onCustomerFilterChange={onCustomerFilterChange}
         query={query}
         setQuery={setQuery}
         status={status}
@@ -794,6 +840,9 @@ function RowActions({
 
 function DataTable({
   title,
+  customers,
+  customerFilterId,
+  onCustomerFilterChange,
   query,
   setQuery,
   status,
@@ -805,6 +854,9 @@ function DataTable({
   children,
 }: {
   title: string;
+  customers: SharedCustomer[];
+  customerFilterId: string;
+  onCustomerFilterChange: (customerId: string) => void;
   query: string;
   setQuery: (value: string) => void;
   status: string;
@@ -820,12 +872,21 @@ function DataTable({
       <div className="data-table-toolbar flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <h3 className="font-semibold">{title}</h3>
         <div className="flex flex-wrap gap-2">
+          <div className="min-w-[220px] flex-1">
+            <CustomerCombobox
+              customers={customers}
+              value={customerFilterId}
+              onChange={onCustomerFilterChange}
+              placeholder="Filter by customer"
+              aria-label="Filter records by customer"
+            />
+          </div>
           <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
             <Search size={14} className="text-[var(--text-muted)]" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search records"
+              placeholder="Search record ID"
               className="w-36 bg-transparent text-xs outline-none placeholder:text-[var(--text-muted)]"
             />
           </label>
@@ -863,7 +924,7 @@ function WalkInForm({
   onNewProfile,
   onSave,
 }: {
-  customers: Array<{ id: string; name: string; classification?: Customer["classification"] }>;
+  customers: SharedCustomer[];
   createdCustomer: Customer | null;
   servicePrices: ServicePrice[];
   branch: string;
@@ -873,6 +934,7 @@ function WalkInForm({
 }) {
   const [existing, setExisting] = useState(true);
   const [name, setName] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [fee, setFee] = useState("");
   const [service, setService] = useState("Non-member walk-in");
   const [payment, setPayment] = useState<"Paid" | "Pending">("Paid");
@@ -882,24 +944,21 @@ function WalkInForm({
   useEffect(() => {
     if (!createdCustomer) return;
     setExisting(true);
-    setName(createdCustomer.name);
+    setCustomerId(createdCustomer.id);
+    setName("");
     setError("");
   }, [createdCustomer]);
-  const selectedCustomer = customers.find((customer) => customer.name.toLowerCase() === name.trim().toLowerCase() || customer.id.toLowerCase() === name.trim().toLowerCase());
+  const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const selectedService = servicePrices.find((item) => item.name === service && item.active);
   useEffect(() => {
     if (selectedService) setFee(String(selectedCustomer ? priceForCustomer(selectedService, selectedCustomer.classification) : selectedService.amount));
   }, [selectedCustomer, selectedService]);
   const submit = () => {
-    if (!name.trim())
+    if (!existing && !name.trim())
       return setError(
         "Select an existing customer or enter a new customer name.",
       );
-    const matchedCustomer = customers.find(
-      (customer) =>
-        customer.name.toLowerCase() === name.trim().toLowerCase() ||
-        customer.id.toLowerCase() === name.trim().toLowerCase(),
-    );
+    const matchedCustomer = customers.find((customer) => customer.id === customerId);
     if (existing && !matchedCustomer)
       return setError("Select an existing customer from the customer records.");
     const configured = servicePrices.find((item) => item.name === service && item.active);
@@ -907,8 +966,8 @@ function WalkInForm({
     if (!configured || !Number.isFinite(parsedFee) || parsedFee < 0) return setError("Select an active service and enter a valid configured price.");
     onSave({
       id: nextMockId("VIS", 20850),
-      customer: name,
-      customerId: matchedCustomer?.id ?? nextMockId("CUS", 10501),
+      customer: existing ? matchedCustomer!.name : name.trim(),
+      customerId: existing ? matchedCustomer!.id : nextMockId("CUS", 10501),
       branch,
       date: nowLabel(),
       timeIn: checkedIn ? "Now" : "Not checked in",
@@ -932,7 +991,7 @@ function WalkInForm({
           <p className="mb-2 text-xs font-medium">Customer</p>
           <div className="flex gap-2">
             <button
-              onClick={() => setExisting(true)}
+              onClick={() => { setExisting(true); setName(""); setCustomerId(""); }}
               className={`rounded-lg border px-3 py-2 text-sm ${existing ? "border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent)]" : "border-[var(--border)]"}`}
             >
               Existing customer
@@ -945,14 +1004,23 @@ function WalkInForm({
               New profile
             </button>
           </div>
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={
-              existing ? "Search by name or customer ID" : "Full name"
-            }
-            className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-          />
+          {existing ? (
+            <div className="mt-3">
+              <CustomerCombobox
+                customers={customers}
+                value={customerId}
+                onChange={(id) => { setCustomerId(id); setError(""); }}
+                placeholder="Search by name, phone, or customer ID"
+              />
+            </div>
+          ) : (
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Full name"
+              className="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+            />
+          )}
         </div>
         <Field label="Branch" value={branch} disabled />
         <label className="block"><span className="mb-1.5 block text-xs font-medium">Service</span><select value={service} onChange={(event) => { const value = event.target.value; setService(value); const configured = servicePrices.find((item) => item.name === value && item.active); setFee(configured ? String(configured.amount) : ""); }} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm">{servicePrices.filter((item) => item.active).map((item) => <option key={item.id}>{item.name}</option>)}</select></label>
@@ -1071,16 +1139,16 @@ function MembershipForm({
   onBack,
   onSave,
 }: {
-  customers: Array<{ id: string; name: string; classification?: Customer["classification"] }>;
+  customers: SharedCustomer[];
   plans: Plan[];
   branch: string;
   onBack: () => void;
   onSave: (membership: Membership) => void;
 }) {
-  const [customer, setCustomer] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [plan, setPlan] = useState(plans[0].name);
   const selected = plans.find((item) => item.name === plan) ?? plans[0];
-  const matchedCustomer = customers.find((item) => item.name.toLowerCase() === customer.trim().toLowerCase() || item.id.toLowerCase() === customer.trim().toLowerCase());
+  const matchedCustomer = customers.find((item) => item.id === customerId);
   const selectedPrice = selected ? membershipPrice(selected, matchedCustomer?.classification) : 0;
   const [payment, setPayment] = useState<"Paid" | "Pending">("Pending");
   const [method, setMethod] = useState("Cash");
@@ -1094,11 +1162,11 @@ function MembershipForm({
     >
       <label className="block">
         <span className="mb-1.5 block text-xs font-medium">Customer</span>
-        <input
-          value={customer}
-          onChange={(event) => setCustomer(event.target.value)}
-          placeholder="Search customer name or ID"
-          className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm outline-none"
+        <CustomerCombobox
+          customers={customers}
+          value={customerId}
+          onChange={(id) => { setCustomerId(id); setError(""); }}
+          placeholder="Search by name, phone, or customer ID"
         />
       </label>
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -1141,15 +1209,11 @@ function MembershipForm({
       <div className="mt-6 flex justify-end border-t border-[var(--border)] pt-5">
       <button
         onClick={() => {
-          if (!customer.trim())
+          if (!customerId)
             return setError(
               "Select an existing customer before creating a membership.",
             );
-          const matchedCustomer = customers.find(
-            (item) =>
-              item.name.toLowerCase() === customer.trim().toLowerCase() ||
-              item.id.toLowerCase() === customer.trim().toLowerCase(),
-          );
+          const matchedCustomer = customers.find((item) => item.id === customerId);
           if (!matchedCustomer)
             return setError("Select an existing customer from the customer records.");
           const summary = selected ? planPricingSummary(selected, matchedCustomer.classification) : { monthly: 0, initiationFee: 0, promoAmount: 0, discountedMonthly: 0, freeIntroMonths: 0, promoLabel: "No promotion" };

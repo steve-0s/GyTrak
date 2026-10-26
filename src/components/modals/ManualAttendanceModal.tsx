@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Modal from "../shared/Modal";
+import CustomerCombobox from "../shared/CustomerCombobox";
 import type { BranchRecord, Customer, Membership } from "../../types";
 
 type AttendanceInput = {
@@ -62,7 +63,7 @@ export default function ManualAttendanceModal({
         <p className="mt-1 text-sm text-[var(--text-muted)]">Record a customer visit separately from payment and membership changes.</p>
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="block sm:col-span-2"><span className="mb-1.5 block text-xs font-medium">Customer</span><select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option value="">Select existing customer</option>{customers.filter((customer) => isAdmin || customer.branch === assignedBranch).map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.id}</option>)}</select></label>
+        <label className="block sm:col-span-2"><span className="mb-1.5 block text-xs font-medium">Customer</span><CustomerCombobox customers={customers.filter((customer) => isAdmin || customer.branch === assignedBranch)} value={customerId} onChange={setCustomerId} placeholder="Search by name, phone, or customer ID" /></label>
         <label className="block"><span className="mb-1.5 block text-xs font-medium">Attendance type</span><select value={type} onChange={(event) => setType(event.target.value as "Member" | "Walk-in")} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option>Member</option><option>Walk-in</option></select></label>
         <label className="block"><span className="mb-1.5 block text-xs font-medium">Branch</span><select value={branch} onChange={(event) => setBranch(event.target.value)} disabled={!isAdmin} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option value="">Select branch</option>{branches.filter((item) => item.status === "Active" && (isAdmin || item.name === assignedBranch)).map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
         <label className="block"><span className="mb-1.5 block text-xs font-medium">Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm" /></label>

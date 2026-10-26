@@ -7,13 +7,13 @@ import {
   ChevronRight,
   Edit3,
   Plus,
-  Search,
   UserRound,
   ImagePlus,
   Trash2,
 } from "lucide-react";
 import { createMockId } from "../../services/mockApi";
 import FilterSelect from "../../components/shared/FilterSelect";
+import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { VisitRecord } from "../../types";
@@ -47,7 +47,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
   const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, reviewRegistration } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [query, setQuery] = useState("");
+  const [customerFilterId, setCustomerFilterId] = useState("");
   const [branch, setBranch] = useState(
     isAdmin ? "All branches" : assignedBranch,
   );
@@ -65,11 +65,9 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
         (customer) =>
           (type === "All types" || customer.type === type) &&
           (status === "All statuses" || customer.status === status) &&
-          `${customer.name} ${customer.id} ${customer.phone}`
-            .toLowerCase()
-            .includes(query.toLowerCase()),
+          (!customerFilterId || customer.id === customerFilterId),
       ),
-    [scopedCustomers, type, status, query],
+    [scopedCustomers, type, status, customerFilterId],
   );
   const selected = customers.find((customer) => customer.id === selectedId);
   const pendingRegistrations = registrations.filter((item) => ["Pending", "Needs correction"].includes(item.status) && (isAdmin || item.branch === assignedBranch));
@@ -212,22 +210,11 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
       <section className="data-table-section">
         <div className="data-table-toolbar flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
-            <label className="flex flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 sm:max-w-xs">
-              <Search size={16} className="text-[var(--text-muted)]" />
-              <input
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search name, ID, or phone"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--text-muted)]"
-              />
-            </label>
+            <div className="flex-1 sm:max-w-xs"><CustomerCombobox customers={scopedCustomers} value={customerFilterId} onChange={(id) => { setCustomerFilterId(id); setPage(1); }} placeholder="Search name, phone, or ID" aria-label="Filter customers" /></div>
             {isAdmin && (
               <Filter
                 value={branch}
-                onChange={setBranch}
+                onChange={(value) => { setBranch(value); setCustomerFilterId(""); setPage(1); }}
                 options={[
                   "All branches",
                   ...activeBranches.map((item) => item.name),
@@ -248,10 +235,11 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             />
             <button
               onClick={() => {
-                setQuery("");
+                setCustomerFilterId("");
                 setBranch(isAdmin ? "All branches" : assignedBranch);
                 setType("All types");
                 setStatus("All statuses");
+                setPage(1);
               }}
               className="px-2 text-xs font-semibold text-[var(--accent)]"
             >

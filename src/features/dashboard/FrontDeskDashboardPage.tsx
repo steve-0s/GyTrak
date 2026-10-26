@@ -1,452 +1,227 @@
-import { useMemo, useState, type ReactNode } from "react";
-import {
-  ArrowUpRight,
-  CalendarDays,
-  CheckCircle2,
-  Plus,
-  RefreshCw,
-  Search,
-} from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { branchAnalytics } from "../../mockdata";
-import PeakActivityCard from "../../components/shared/PeakActivityCard";
+import { useMemo, useState } from "react";
+import { ArrowUpRight, CalendarDays, CheckCircle2, Plus } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import { useGymData } from "../../contexts/GymDataContext";
-import { membershipDueState } from "../../lib/membership";
+import {
+  addDateDays,
+  businessDateKey,
+  dashboardDateKey,
+  daysFromToday,
+  formatBusinessDate,
+  hourLabel,
+  timeHourBucket,
+} from "../../lib/dashboardMetrics";
+import type { Membership, PaymentRecord } from "../../types";
 
-type Props = { branch?: string; onAction: (message: string) => void };
+type Props = {
+  branch?: string;
+  onAction: (message: string) => void;
+  onOpenMembership?: (membershipId: string) => void;
+};
 
 const php = (amount: number) => `₱${amount.toLocaleString("en-PH")}`;
+const tooltipStyle = {
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  background: "var(--surface)",
+  color: "var(--text)",
+  fontSize: 12,
+};
 
-export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makati Central", onAction }: Props) {
+export default function FrontDeskDashboardPage({
+  branch: assignedBranch = "Makati Central",
+  onAction,
+  onOpenMembership,
+}: Props) {
   const { registrations, visits, walkIns, memberships, customers, reminderRecords, payments } = useGymData();
-  const branch = assignedBranch;
-  const attendanceRecords = visits.filter((record) => record.branch === branch).map((record) => ({ customer: record.customer, branch: record.branch, in: record.timeIn, out: record.timeOut, type: record.type, source: record.source.startsWith("RFID") ? "RFID" : "Manual", status: record.status }));
-  const branchWalkIns = walkIns.filter((visit) => visit.branch === branch);
-  const analytics = branchAnalytics[branch as keyof typeof branchAnalytics] ?? branchAnalytics["Makati Central"];
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("All statuses");
-  const [date, setDate] = useState("Today");
-  const filteredAttendance = useMemo(
-    () =>
-      attendanceRecords.filter(
-        (record) =>
-          record.customer.toLowerCase().includes(search.toLowerCase()) &&
-          (status === "All statuses" || record.status === status),
-      ),
-    [search, status],
+  const today = businessDateKey();
+  const yesterday = addDateDays(today, -1);
+  const branchVisits = visits.filter((record) => record.branch === assignedBranch);
+  const branchWalkIns = walkIns.filter((visit) => visit.branch === assignedBranch);
+  const branchMemberships = memberships.filter((item) => item.branch === assignedBranch);
+  const branchPayments = payments.filter((payment) =>
+    (payment.branch || branchMemberships.find((item) => item.id === payment.membershipId)?.branch) === assignedBranch,
   );
-  const paidRevenue = branchWalkIns
-    .filter((visit) => visit.payment === "Paid")
-    .reduce((total, visit) => total + visit.fee, 0);
-  const collectedMembershipRevenue = payments
-    .filter((payment) => payment.branch === branch && (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount")
-    .reduce((total, payment) => total + payment.amount, 0);
-  const todayWalkIns = branchWalkIns.filter((visit) => visit.date === "Oct 20, 2026");
-  const uniqueVisitors = new Set(attendanceRecords.map((record) => record.customer)).size;
-  const dueMemberships = memberships.filter((item) => item.branch === branch && membershipDueState(item.end).key !== "upcoming");
+  const todayVisits = branchVisits.filter((record) => dashboardDateKey(record.date) === today && record.status !== "Voided");
+  const todayWalkIns = branchWalkIns.filter((visit) => dashboardDateKey(visit.date) === today);
+  const todayPayments = branchPayments.filter((payment) =>
+    dashboardDateKey(payment.date) === today && (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount",
+  );
+  const membershipRevenue = todayPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const walkInRevenueWithoutPaymentRecord = todayWalkIns.filter((visit) => visit.payment === "Paid" &&
+    !branchPayments.some((payment) => payment.category === "Walk-in" && payment.reference === visit.id))
+    .reduce((sum, visit) => sum + visit.fee, 0);
+  const todayRevenue = membershipRevenue + walkInRevenueWithoutPaymentRecord;
+  const pendingPayments = branchPayments.filter((payment) => payment.status === "Pending").length;
+  const outstanding = branchMemberships.reduce((sum, item) => sum + Math.max(0, item.outstandingBalance ?? 0), 0);
+  const activeMemberships = branchMemberships.filter((item) => item.status === "Active" &&
+    (!dashboardDateKey(item.start) || dashboardDateKey(item.start)! <= today) &&
+    (!dashboardDateKey(item.end) || dashboardDateKey(item.end)! >= today));
+  const openSessions = todayVisits.filter((record) => record.status === "Checked in");
+  const syncQueue = branchVisits.filter((record) => record.sync === "Pending" || record.sync === "Failed");
+  const uniqueToday = new Set(todayVisits.map((record) => record.customerId)).size;
+  const [customerFilterId, setCustomerFilterId] = useState("");
+  const [status, setStatus] = useState("All statuses");
+  const [dateFilter, setDateFilter] = useState("Today");
+  const [visitType, setVisitType] = useState("All visit types");
+  const [source, setSource] = useState("All sources");
+
+  const filteredAttendance = useMemo(() => {
+    const start = dateFilter === "Today" ? today : dateFilter === "Yesterday" ? yesterday : addDateDays(today, -6);
+    return branchVisits.filter((record) => {
+      const key = dashboardDateKey(record.date);
+      return key !== null && key >= start && key <= (dateFilter === "Yesterday" ? yesterday : today) &&
+        (!customerFilterId || record.customerId === customerFilterId) &&
+        (status === "All statuses" || record.status === status) &&
+        (visitType === "All visit types" || record.type === visitType) &&
+        (source === "All sources" || (source === "RFID" ? record.source.startsWith("RFID") : record.source === "Manual"));
+    }).sort((a, b) => `${dashboardDateKey(b.date)} ${b.timeIn}`.localeCompare(`${dashboardDateKey(a.date)} ${a.timeIn}`));
+  }, [branchVisits, customerFilterId, dateFilter, source, status, today, visitType, yesterday]);
+
+  const attendanceByHour = Array.from({ length: 24 }, (_, hour) => ({
+    hour: hourLabel(hour),
+    count: todayVisits.filter((record) => timeHourBucket(record.timeIn) === hour).length,
+  })).filter((item) => item.count > 0);
+  const attentionMemberships = branchMemberships.filter((item) => {
+    const days = daysFromToday(dashboardDateKey(item.end) ?? item.end, today);
+    return (item.status === "Active" && days >= 0 && days <= 30) ||
+      (item.status === "Expired" && (item.outstandingBalance ?? 0) > 0) ||
+      ((item.outstandingBalance ?? 0) > 0 && item.status === "Pending");
+  }).sort((a, b) => (dashboardDateKey(a.end) ?? a.end).localeCompare(dashboardDateKey(b.end) ?? b.end));
+  const pendingRegistrations = registrations.filter((item) =>
+    item.branch === assignedBranch && ["Pending", "Needs correction"].includes(item.status),
+  );
+  const paymentTargetMembership = branchMemberships.find((item) =>
+    (item.outstandingBalance ?? 0) > 0 || item.payment === "Pending",
+  );
+  const branchReminderRecords = reminderRecords.filter((record) => record.branch === assignedBranch);
+  const recentPayments = [...branchPayments].filter((payment) =>
+    (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount",
+  ).sort((a, b) => (dashboardDateKey(b.date) ?? "").localeCompare(dashboardDateKey(a.date) ?? "")).slice(0, 5);
   const stats = [
-    ["Check-ins today", String(attendanceRecords.length), "Confirmed events"],
-    ["Unique visitors", String(uniqueVisitors), "Distinct customers"],
-    ["Active members", String(memberships.filter((membership) => membership.status === "Active" && membership.branch === branch).length), "Assigned branch records"],
-    ["Walk-ins today", String(todayWalkIns.length), `${php(paidRevenue)} collected`],
-    ["Branch revenue", `${php(collectedMembershipRevenue)}`, "Membership + paid services"],
-    ["Payment follow-up", String(dueMemberships.length), "Manual reminders only"],
+    { label: "Today's attendance", value: todayVisits.length.toLocaleString("en-PH"), context: "Recorded, non-void attendance" },
+    { label: "Unique visitors", value: uniqueToday.toLocaleString("en-PH"), context: "Distinct customer records today" },
+    { label: "Active memberships", value: activeMemberships.length.toLocaleString("en-PH"), context: "Active and within membership dates" },
+    { label: "Walk-ins today", value: todayWalkIns.length.toLocaleString("en-PH"), context: "Branch walk-in records" },
+    { label: "Collected today", value: php(todayRevenue), context: "Paid membership and walk-in records" },
+    { label: "Outstanding balance", value: php(outstanding), context: "Saved membership balance fields" },
+    { label: "Pending payments", value: pendingPayments.toLocaleString("en-PH"), context: "Pending payment records" },
+    { label: "Memberships needing follow-up", value: attentionMemberships.length.toLocaleString("en-PH"), context: "Upcoming expiry or outstanding balance" },
+    { label: "Registration review", value: pendingRegistrations.length.toLocaleString("en-PH"), context: "Pending or needs correction" },
+    { label: "Open sessions", value: openSessions.length.toLocaleString("en-PH"), context: "Checked in without checkout" },
   ];
 
   return (
     <div>
       <div className="page-header page-header--actions">
         <div>
-          <p className="mb-1 text-sm font-medium text-[var(--accent)]">
-            {branch}
-          </p>
+          <p className="mb-1 text-sm font-medium text-[var(--accent)]">{assignedBranch}</p>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Today’s branch activity and tasks.
-          </p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Branch activity for {formatBusinessDate(today)}.</p>
         </div>
         <div className="page-header-actions">
-          <button
-            onClick={() => onAction("Walk-in registration opened")}
-            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
-          >
-            <Plus size={16} /> Register Walk-in
-          </button>
-          <button
-            onClick={() => onAction("New customer form opened")}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
-          >
-            Add customer
-          </button>
-          <button
-            onClick={() => onAction("Attendance correction opened")}
-            className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block"
-          >
-            Attendance correction
-          </button>
+          <button onClick={() => onAction("Walk-in registration opened")} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"><Plus size={16} /> Register walk-in</button>
+          <button onClick={() => onAction("New customer form opened")} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]">Add customer</button>
+          <button onClick={() => onAction("Membership creation opened")} className="hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)] sm:block">Enroll member</button>
         </div>
       </div>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        {stats.map(([label, value, context]) => (
-          <div
-            key={label}
-            className="summary-card"
-          >
-            <p className="summary-card-label">{label}</p>
-            <p className="summary-card-value">{value}</p>
-            <p className="summary-card-context">
-              {context}
-            </p>
-          </div>
-        ))}
+        {stats.map((item) => <div key={item.label} className="summary-card"><p className="summary-card-label">{item.label}</p><p className="summary-card-value">{item.value}</p><p className="summary-card-context">{item.context}</p></div>)}
       </div>
       <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h3 className="font-semibold">Membership reminders</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Branch-scoped follow-up · simulations only</p></div><button onClick={() => onAction("Membership reminders opened")} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">Open reminders</button></div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">{[["Expiring soon", memberships.filter((m) => m.branch === branch && (membershipDueState(m.end).key === "soon" || membershipDueState(m.end).key === "today")).length], ["Overdue", memberships.filter((m) => m.branch === branch && membershipDueState(m.end).key === "overdue").length], ["Missing contact", memberships.filter((m) => { const c = customers.find((x) => x.id === m.customerId); return m.branch === branch && !c?.email && !c?.phone; }).length], ["Simulated attempts", reminderRecords.filter((r) => r.branch === branch && r.source === "simulated automatic").length]].map(([label, value]) => <button key={String(label)} onClick={() => onAction("Membership reminders opened")} className="rounded-lg bg-[var(--bg)] p-3 text-left"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 text-xl font-bold">{value}</p></button>)}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">Quick actions</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Available within {assignedBranch}</p></div></div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <QuickAction label="Record attendance" onClick={() => onAction("Manual attendance form opened")} />
+          <QuickAction label="Open memberships" onClick={() => onAction("Memberships opened")} />
+          <QuickAction label="Take payment" onClick={() => paymentTargetMembership && onOpenMembership
+            ? onOpenMembership(paymentTargetMembership.id)
+            : onAction("Memberships opened")} />
+          <QuickAction label="Review registrations" onClick={() => onAction("Customers opened")} />
+          <QuickAction label="Membership reminders" onClick={() => onAction("Membership reminders opened")} />
+          <QuickAction label="RFID keyfobs" onClick={() => onAction("Keyfob assignment opened")} />
+        </div>
       </section>
 
-      <div className="mt-6">
-        <PeakActivityCard branch={branch as keyof typeof branchAnalytics} />
+      <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h3 className="font-semibold">Today's attendance by hour</h3><p className="mt-1 text-xs text-[var(--text-muted)]">From actual time-in records · {assignedBranch}</p></div>
+          <button onClick={() => onAction("Complete attendance page opened")} className="text-xs font-semibold text-[var(--accent)]">View attendance <ArrowUpRight size={13} className="inline" /></button>
+        </div>
+        {attendanceByHour.length ? <div className="mt-3 h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={attendanceByHour} margin={{ top: 8, right: 6, left: -20, bottom: 0 }}><CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: "var(--text-muted)", fontSize: 10 }} /><YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--text-muted)", fontSize: 11 }} /><Tooltip contentStyle={tooltipStyle} /><Bar dataKey="count" name="Check-ins" fill="var(--accent)" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div> : <EmptyState text="No attendance has been recorded today." />}
+      </section>
+
+      <section className="mt-5 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex flex-col justify-between gap-3 border-b border-[var(--border)] px-5 py-4 sm:flex-row sm:items-center">
+          <div><h3 className="font-semibold">Attendance</h3><p className="mt-1 text-xs text-[var(--text-muted)]">{filteredAttendance.length} matching events · {assignedBranch}</p></div>
+          <div className="flex flex-wrap gap-2">
+            <div className="min-w-[200px]"><CustomerCombobox customers={branchVisits.map((visit) => customers.find((customer) => customer.id === visit.customerId)).filter((customer): customer is NonNullable<typeof customer> => Boolean(customer))} value={customerFilterId} onChange={setCustomerFilterId} placeholder="Filter by customer" aria-label="Filter branch attendance by customer" /></div>
+            <label className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5"><CalendarDays size={14} className="text-[var(--text-muted)]" /><select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="bg-transparent text-xs outline-none"><option>Today</option><option>Yesterday</option><option>This week</option></select></label>
+            <select aria-label="Attendance status filter" value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-xs outline-none"><option>All statuses</option><option>Checked in</option><option>Completed</option><option>Voided</option></select>
+            <select aria-label="Visit type filter" value={visitType} onChange={(event) => setVisitType(event.target.value)} className="rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-xs outline-none"><option>All visit types</option><option>Member</option><option>Walk-in</option></select>
+            <select aria-label="Attendance source filter" value={source} onChange={(event) => setSource(event.target.value)} className="rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-xs outline-none"><option>All sources</option><option>RFID</option><option>Manual</option></select>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="data-table data-table--compact min-w-[760px]"><thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]"><tr>{["Date", "Customer", "Time-in", "Time-out", "Type", "Source", "Status", ""].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[var(--border)]">{filteredAttendance.slice(0, 10).map((record) => <tr key={record.id} className="hover:bg-[var(--bg)]"><td className="px-4 py-3 text-[var(--text-muted)]">{record.date}</td><td className="px-4 py-3 font-semibold">{record.customer}</td><td className="px-4 py-3 text-[var(--text-muted)]">{record.timeIn}</td><td className="px-4 py-3 text-[var(--text-muted)]">{record.timeOut}</td><td className="px-4 py-3">{record.type}</td><td className="px-4 py-3 text-[var(--text-muted)]">{record.source.startsWith("RFID") ? "RFID" : "Manual"}</td><td className="px-4 py-3">{record.status}</td><td className="px-4 py-3 text-right"><button onClick={() => onAction(`${record.customer} attendance details opened`)} className="font-semibold text-[var(--accent)]">Details</button></td></tr>)}</tbody></table>
+          {filteredAttendance.length === 0 && <EmptyState text="No attendance records match the selected branch, date, and filters." />}
+        </div>
+      </section>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <SectionHeader title="Today's Walk-ins" subtitle={`${todayWalkIns.length} visits · ${php(todayRevenue)} collected across recorded payments`} action="Register walk-in" onAction={() => onAction("Walk-in registration opened")} />
+          <div className="overflow-x-auto"><table className="data-table data-table--compact min-w-[480px]"><thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]"><tr>{["Customer", "Time", "Fee", "Payment", "Status"].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[var(--border)]">{todayWalkIns.map((visit) => <tr key={visit.id}><td className="px-4 py-3 font-medium">{visit.customer}</td><td className="px-4 py-3 text-[var(--text-muted)]">{visit.timeIn}</td><td className="px-4 py-3">{php(visit.fee)}</td><td className={`px-4 py-3 font-medium ${visit.payment === "Paid" ? "text-[var(--accent)]" : "text-amber-500"}`}>{visit.payment}</td><td className="px-4 py-3">{visit.status}</td></tr>)}{todayWalkIns.length === 0 && <tr><td colSpan={5}><EmptyState text="No walk-ins have been recorded today." /></td></tr>}</tbody></table></div>
+        </section>
+        <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <SectionHeader title="Recent Payments" subtitle="Paid records for this branch · discounts are not revenue" action="Open memberships" onAction={() => onAction("Memberships opened")} />
+          <div className="overflow-x-auto"><table className="data-table data-table--compact min-w-[500px]"><thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]"><tr>{["Date", "Customer / service", "Category", "Method", "Amount"].map((label) => <th key={label} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[var(--border)]">{recentPayments.map((payment) => <PaymentRow key={payment.id} payment={payment} membership={branchMemberships.find((item) => item.id === payment.membershipId)} />)}{recentPayments.length === 0 && <tr><td colSpan={5}><EmptyState text="No paid payments are available." /></td></tr>}</tbody></table></div>
+        </section>
       </div>
 
-      <div className="mt-6 grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h3 className="font-semibold">Today’s Attendance</h3>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Confirmed check-ins by hour · {branch}
-              </p>
-            </div>
-            <span className="text-xs text-[var(--text-muted)]">Local time</span>
-          </div>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={analytics.hourly}
-                margin={{ top: 8, right: 4, left: -25, bottom: 0 }}
-              >
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="hour"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    background: "var(--surface)",
-                    color: "var(--text)",
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  dataKey="visits"
-                  name="Check-ins"
-                  fill="var(--accent)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <SectionHeader title="Membership Attention" subtitle="Branch-scoped expirations and outstanding amounts" action="Open reminders" onAction={() => onAction("Membership reminders opened")} />
+          <div className="divide-y divide-[var(--border)]">{attentionMemberships.slice(0, 6).map((item) => <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3.5"><div><p className="text-xs font-semibold">{item.customer} <span className="font-normal text-[var(--text-muted)]">· {item.plan}</span></p><p className="mt-1 text-[11px] text-[var(--text-muted)]">Expires {item.end} · balance {php(item.outstandingBalance ?? 0)}</p></div><button onClick={() => onOpenMembership?.(item.id)} className="shrink-0 text-xs font-semibold text-[var(--accent)]">Details</button></div>)}{attentionMemberships.length === 0 && <EmptyState text="No memberships currently need follow-up." />}</div>
         </section>
         <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-            <div>
-              <h3 className="font-semibold">Scanner & Sync</h3>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Branch operational health
-              </p>
-            </div>
-            <button
-              onClick={() => onAction("Scanner status refreshed")}
-              className="rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg)]"
-              aria-label="Refresh scanner status"
-            >
-              <RefreshCw size={16} />
-            </button>
+          <SectionHeader title="Operations & reminders" subtitle="Recorded branch status; no live device connection is exposed" action="Open reminders" onAction={() => onAction("Membership reminders opened")} />
+          <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <StatusTile label="Pending / failed attendance sync" value={syncQueue.length} detail="From attendance records" onClick={() => onAction("Sync queue opened")} />
+            <StatusTile label="Open check-in sessions" value={openSessions.length} detail="No checkout recorded" onClick={() => onAction("Complete attendance page opened")} />
+            <StatusTile label="Reminder attempts" value={branchReminderRecords.length} detail="Recorded simulated/manual attempts" onClick={() => onAction("Membership reminders opened")} />
+            <StatusTile label="Collected today" value={php(todayRevenue)} detail="Paid membership and walk-in records" onClick={() => onAction("Memberships opened")} />
           </div>
-          <div className="space-y-1 p-3">
-            {[
-              ["Scanner 1 · Time-in", "Online", "text-[var(--accent)]"],
-              ["Scanner 2 · Time-out", "Online", "text-[var(--accent)]"],
-              ["Sync queue", "2 Pending", "text-amber-500"],
-              ["Failed events", "0 Failed", "text-[var(--accent)]"],
-            ].map((item) => (
-              <div
-                key={item[0]}
-                className="flex items-center justify-between rounded-lg px-3 py-3 text-xs"
-              >
-                <span className="text-[var(--text-muted)]">{item[0]}</span>
-                <span className={`font-semibold ${item[2]}`}>
-                  <i className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-current" />
-                  {item[1]}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--text-muted)]">
-            Last successful sync today at 09:45 AM
-            <button
-              onClick={() => onAction("Detailed sync status opened")}
-              className="ml-2 font-semibold text-[var(--accent)]"
-            >
-              Details
-            </button>
-          </div>
+          <p className="border-t border-[var(--border)] px-5 py-3 text-[11px] text-[var(--text-muted)]">Live scanner/device connectivity is not present in the frontend mock data. Sync counts above reflect only saved visit records.</p>
         </section>
       </div>
 
       <section className="mt-5 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="flex flex-col justify-between gap-3 border-b border-[var(--border)] px-5 py-4 sm:flex-row sm:items-center">
-          <div>
-            <h3 className="font-semibold">Recent Attendance</h3>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Attendance events for your assigned branch
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 py-1.5">
-              <Search size={14} className="text-[var(--text-muted)]" />
-              <input
-                value={search}
-                onChange={(event: { target: { value: string } }) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search customer"
-                className="w-32 bg-transparent text-xs outline-none placeholder:text-[var(--text-muted)]"
-              />
-            </label>
-            <label className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5">
-              <CalendarDays size={14} className="text-[var(--text-muted)]" />
-              <select
-                value={date}
-                onChange={(event: { target: { value: string } }) =>
-                  setDate(event.target.value)
-                }
-                className="bg-transparent text-xs outline-none"
-              >
-                <option>Today</option>
-                <option>Yesterday</option>
-                <option>This week</option>
-              </select>
-            </label>
-            <select
-              value={status}
-              onChange={(event: { target: { value: string } }) =>
-                setStatus(event.target.value)
-              }
-              className="rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-xs outline-none"
-            >
-              <option>All statuses</option>
-              <option>Checked in</option>
-              <option>Completed</option>
-            </select>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="data-table data-table--compact min-w-[720px]">
-            <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
-              <tr>
-                {[
-                  "Customer",
-                  "Time-in",
-                  "Time-out",
-                  "Visit type",
-                  "Source",
-                  "Status",
-                  "",
-                ].map((label) => (
-                  <th key={label} className="px-5 py-3 font-semibold">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {filteredAttendance.map((record) => (
-                <tr key={record.customer} className="hover:bg-[var(--bg)]">
-                  <td className="px-5 py-3.5 font-semibold">
-                    {record.customer}
-                  </td>
-                  <td className="px-5 py-3.5 text-[var(--text-muted)]">
-                    {record.in}
-                  </td>
-                  <td className="px-5 py-3.5 text-[var(--text-muted)]">
-                    {record.out}
-                  </td>
-                  <td className="px-5 py-3.5">{record.type}</td>
-                  <td className="px-5 py-3.5 text-[var(--text-muted)]">
-                    {record.source}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span
-                      className={`font-medium ${record.status === "Checked in" ? "text-[var(--accent)]" : "text-[var(--text-muted)]"}`}
-                    >
-                      {record.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() =>
-                        onAction(`${record.customer} attendance details opened`)
-                      }
-                      className="font-semibold text-[var(--accent)]"
-                    >
-                      Details
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredAttendance.length === 0 && (
-            <EmptyState text="No attendance records match your filters." />
-          )}
-        </div>
-        <div className="flex justify-end border-t border-[var(--border)] px-5 py-3">
-          <button
-            onClick={() => onAction("Complete attendance page opened")}
-            className="flex items-center gap-1 text-xs font-semibold text-[var(--accent)]"
-          >
-            View all attendance <ArrowUpRight size={14} />
-          </button>
-        </div>
+        <SectionHeader title="Registration Review" subtitle={`${assignedBranch} QR submissions awaiting staff action`} action="Review in Customers" onAction={() => onAction("Customers opened")} />
+        <div className="grid gap-3 p-4 sm:grid-cols-2">{pendingRegistrations.slice(0, 4).map((item) => <div key={item.id} className="rounded-lg border border-[var(--border)] p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{item.name}</p><span className="text-[11px] text-amber-500">{item.possibleCustomerIds.length ? "Possible duplicate" : item.status}</span></div><p className="mt-1 text-[11px] text-[var(--text-muted)]">{item.reference} · {new Date(item.submittedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}</p><button onClick={() => onAction("Customers opened")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review submission</button></div>)}{pendingRegistrations.length === 0 && <EmptyState text="No profile registrations are waiting for review." />}</div>
       </section>
-
-      <div className="mt-5 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[.95fr_1.05fr]">
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-            <div>
-              <h3 className="font-semibold">Walk-in Activity</h3>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">
-                {branchWalkIns.length} visits today · {php(paidRevenue)} collected
-              </p>
-            </div>
-            <button
-              onClick={() => onAction("Walk-in registration opened")}
-              className="text-xs font-semibold text-[var(--accent)]"
-            >
-              Register
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="data-table data-table--compact min-w-[440px]">
-              <thead className="bg-[var(--bg)] uppercase tracking-wide text-[var(--text-muted)]">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Customer</th>
-                  <th className="px-5 py-3 font-semibold">Time</th>
-                  <th className="px-5 py-3 font-semibold">Fee</th>
-                  <th className="px-5 py-3 font-semibold">Payment</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {branchWalkIns.map((visit) => (
-                  <tr key={visit.customer}>
-                    <td className="px-5 py-3.5 font-medium">
-                      {visit.customer}
-                    </td>
-                    <td className="px-5 py-3.5 text-[var(--text-muted)]">
-                      {visit.timeIn}
-                    </td>
-                    <td className="px-5 py-3.5">{php(visit.fee)}</td>
-                    <td
-                      className={`px-5 py-3.5 font-medium ${visit.payment === "Paid" ? "text-[var(--accent)]" : "text-amber-500"}`}
-                    >
-                      {visit.payment}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <h3 className="font-semibold">Membership Attention</h3>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Records requiring a follow-up
-            </p>
-          </div>
-          <div className="divide-y divide-[var(--border)]">
-            {dueMemberships.map((item) => (
-              <div
-                key={item.customer}
-                className="flex items-center justify-between gap-3 px-5 py-3.5"
-              >
-                <div>
-                  <p className="text-xs font-semibold">{item.customer}</p>
-                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                    Due {item.end} · {membershipDueState(item.end).label}
-                  </p>
-                </div>
-                <button
-                  onClick={() => onAction(`${item.customer} payment follow-up opened`)}
-                  className="shrink-0 text-xs font-semibold text-[var(--accent)]"
-                >
-                  Follow up
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <section className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-          <div>
-            <h3 className="font-semibold">Registration Review</h3>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              QR submissions waiting for staff review
-            </p>
-          </div>
-          <span className="rounded-full bg-[var(--accent-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent)]">
-            {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).length} pending
-          </span>
-        </div>
-        <div className="grid gap-3 p-4 sm:grid-cols-2">
-          {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).slice(0, 4).map((item) => (
-            <div key={item.id} className="rounded-lg border border-[var(--border)] p-3">
-              <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{item.name}</p><span className="text-[11px] text-amber-500">{item.possibleCustomerIds.length ? "Possible duplicate" : item.status}</span></div>
-              <p className="mt-1 text-[11px] text-[var(--text-muted)]">{item.reference} · {new Date(item.submittedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}</p>
-              <button onClick={() => onAction("Customers opened")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review in Customers</button>
-            </div>
-          ))}
-          {registrations.filter((item) => item.branch === branch && ["Pending", "Needs correction"].includes(item.status)).length === 0 && <p className="p-3 text-xs text-[var(--text-muted)]">No profile registrations are waiting for review.</p>}
-        </div>
-      </section>
-      <p className="mt-5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-        <CheckCircle2 size={14} className="text-[var(--accent)]" />
-        Sample branch data for prototype use · Registration does not create
-        attendance automatically.
-      </p>
+      <p className="mt-5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]"><CheckCircle2 size={14} className="text-[var(--accent)]" />All displayed operational records are scoped to {assignedBranch}. Dashboard date boundaries use Asia/Manila.</p>
     </div>
   );
 }
 
+function PaymentRow({ payment, membership }: { key: string; payment: PaymentRecord; membership?: Membership }) {
+  return <tr><td className="px-4 py-3 text-[var(--text-muted)]">{payment.date}</td><td className="px-4 py-3 font-medium">{membership?.customer ?? payment.serviceName ?? payment.reference}</td><td className="px-4 py-3">{payment.category ?? "Membership"}</td><td className="px-4 py-3 text-[var(--text-muted)]">{payment.method}</td><td className="px-4 py-3 font-semibold">{php(payment.amount)}</td></tr>;
+}
+
+function SectionHeader({ title, subtitle, action, onAction }: { title: string; subtitle: string; action?: string; onAction?: () => void }) {
+  return <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4"><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-xs text-[var(--text-muted)]">{subtitle}</p></div>{action && onAction && <button onClick={onAction} className="shrink-0 text-xs font-semibold text-[var(--accent)]">{action} <ArrowUpRight size={13} className="inline" /></button>}</div>;
+}
+
+function QuickAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return <button onClick={onClick} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold hover:bg-[var(--bg)]">{label}</button>;
+}
+
+function StatusTile({ label, value, detail, onClick }: { label: string; value: number | string; detail: string; onClick: () => void }) {
+  return <button onClick={onClick} className="rounded-lg bg-[var(--bg)] p-3 text-left"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 text-xl font-bold">{value}</p><p className="mt-1 text-[11px] text-[var(--text-muted)]">{detail}</p></button>;
+}
+
 function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="p-8 text-center text-xs text-[var(--text-muted)]">
-      {text}
-    </div>
-  );
+  return <div className="p-8 text-center text-xs text-[var(--text-muted)]">{text}</div>;
 }

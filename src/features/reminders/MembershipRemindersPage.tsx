@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Bell, Check, Search, X } from "lucide-react";
+import { Bell, Check, X } from "lucide-react";
 import Modal from "../../components/shared/Modal";
+import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import { useGymData } from "../../contexts/GymDataContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { daysUntil, renderTemplate, reminderStage } from "../../lib/reminders";
@@ -13,9 +14,9 @@ const badge = (value: string) => value === "Simulated" ? "bg-blue-50 text-blue-7
 export default function MembershipRemindersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
   const { role, account } = useAuth();
   const { customers, memberships, payments, branches, reminderRecords, reminderSettings, addReminder } = useGymData();
-  const [query, setQuery] = useState(""); const [filter, setFilter] = useState("All reminders"); const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch); const [selected, setSelected] = useState<Membership | null>(null); const [showHistory, setShowHistory] = useState(false);
+  const [query, setQuery] = useState(""); const [customerId, setCustomerId] = useState(""); const [filter, setFilter] = useState("All reminders"); const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch); const [selected, setSelected] = useState<Membership | null>(null); const [showHistory, setShowHistory] = useState(false);
   const scoped = memberships.filter((m) => branch === "All branches" || m.branch === branch);
-  const rows = useMemo(() => scoped.filter((m) => { const c = customers.find((x) => x.id === m.customerId); const days = daysUntil(m.end); const stage = days === null ? null : reminderStage(days); const missing = !c?.email && !c?.phone; const matchFilter = filter === "All reminders" || (filter === "Upcoming" && days !== null && days > 0 && days <= 7) || (filter === "Due today" && days === 0) || (filter === "Overdue" && days !== null && days < 0) || (filter === "Missing contact" && missing) || (filter === "Skipped / failed" && reminderRecords.some((r) => r.membershipId === m.id && (r.status === "Skipped" || r.status === "Failed"))) || (filter === "Paid" && m.payment === "Paid") || (filter === "Unpaid" && m.payment === "Pending"); return matchFilter && `${m.customer} ${m.plan} ${m.branch}`.toLowerCase().includes(query.toLowerCase()); }), [scoped, customers, filter, query, reminderRecords]);
+  const rows = useMemo(() => scoped.filter((m) => { const c = customers.find((x) => x.id === m.customerId); const days = daysUntil(m.end); const stage = days === null ? null : reminderStage(days); const missing = !c?.email && !c?.phone; const matchFilter = filter === "All reminders" || (filter === "Upcoming" && days !== null && days > 0 && days <= 7) || (filter === "Due today" && days === 0) || (filter === "Overdue" && days !== null && days < 0) || (filter === "Missing contact" && missing) || (filter === "Skipped / failed" && reminderRecords.some((r) => r.membershipId === m.id && (r.status === "Skipped" || r.status === "Failed"))) || (filter === "Paid" && m.payment === "Paid") || (filter === "Unpaid" && m.payment === "Pending"); return matchFilter && (!customerId || m.customerId === customerId) && `${m.plan} ${m.branch}`.toLowerCase().includes(query.toLowerCase()); }), [scoped, customers, filter, query, customerId, reminderRecords]);
   const metrics = { upcoming: scoped.filter((m) => { const d = daysUntil(m.end); return d !== null && d > 0 && d <= 7; }).length, due: scoped.filter((m) => daysUntil(m.end) === 0).length, overdue: scoped.filter((m) => { const d = daysUntil(m.end); return d !== null && d < 0; }).length, manual: reminderRecords.filter((r) => r.source === "manual").length, automatic: reminderRecords.filter((r) => r.source === "simulated automatic").length, skipped: reminderRecords.filter((r) => r.status === "Skipped" || r.status === "Failed").length, missing: scoped.filter((m) => { const c = customers.find((x) => x.id === m.customerId); return !c?.email && !c?.phone; }).length };
   const eligible = (m: Membership) => { const d = daysUntil(m.end); return d !== null && Boolean(reminderStage(d)); };
   return <div>
@@ -23,16 +24,14 @@ export default function MembershipRemindersPage({ isAdmin, branch: assignedBranc
     <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">{[["Upcoming", metrics.upcoming], ["Due today", metrics.due], ["Overdue", metrics.overdue], ["Manual sent", metrics.manual], ["Simulated", metrics.automatic], ["Skipped / failed", metrics.skipped], ["Missing contact", metrics.missing]].map(([label, value]) => <div key={String(label)} className="summary-card"><p className="summary-card-label">{label}</p><p className="summary-card-value">{value}</p></div>)}</div>
     <section className="data-table-section">
       <div className="data-table-toolbar flex flex-wrap gap-2">
-        <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
-          <Search size={15} className="text-[var(--text-muted)]" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search member, plan, branch" className="w-full bg-transparent text-sm outline-none" />
-        </label>
+        <div className="min-w-[220px] flex-1"><CustomerCombobox customers={customers.filter((customer) => branch === "All branches" || customer.branch === branch)} value={customerId} onChange={setCustomerId} placeholder="Filter by customer" aria-label="Filter reminders by customer" /></div>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search plan or branch" className="min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none" />
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
           {stages.map(([label]) => <option key={label}>{label}</option>)}
           <option>Paid</option><option>Unpaid</option>
         </select>
         {isAdmin ? (
-          <select value={branch} onChange={(e) => setBranch(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+          <select value={branch} onChange={(e) => { setBranch(e.target.value); setCustomerId(""); }} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
             <option>All branches</option>
             {branches.filter((b) => b.status === "Active").map((b) => <option key={b.id}>{b.name}</option>)}
           </select>

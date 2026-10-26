@@ -153,6 +153,11 @@ button { cursor: pointer; }
 .data-table--compact thead th { padding: 0.625rem 1rem; }
 .data-table--compact tbody tr { height: 3rem; }
 .data-table--compact tbody td { padding: 0.625rem 1rem; }
+.dashboard-branch-performance-table.data-table--compact thead th,
+.dashboard-branch-performance-table.data-table--compact tbody td {
+  padding: 0.875rem 1.125rem;
+}
+.dashboard-branch-performance-table.data-table--compact tbody tr { height: 3.5rem; }
 .data-table-pagination {
   display: flex;
   align-items: center;

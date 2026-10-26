@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Check, Clock3, RotateCcw, Search } from "lucide-react";
+import { ArrowLeft, Check, Clock3, RotateCcw } from "lucide-react";
 import FilterSelect from "../../components/shared/FilterSelect";
+import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { Customer, VisitRecord } from "../../types";
 
@@ -14,9 +15,9 @@ function durationLabel(timeIn: string, timeOut: string) { const start = parseTim
 
 export default function AttendancePage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, onOpenCustomer, beforeContent, initialVisitId, onInitialVisitHandled }: Props) {
   const { visits, customers, branches, updateVisit, addAuditLog } = useGymData();
-  const [selected, setSelected] = useState<VisitRecord | null>(() => visits.find((event) => event.id === initialVisitId) ?? null); const [query, setQuery] = useState(""); const [status, setStatus] = useState("All statuses"); const [source, setSource] = useState("All sources"); const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch); const [fromDate, setFromDate] = useState(""); const [toDate, setToDate] = useState(""); const [page, setPage] = useState(1);
-  const filtered = useMemo(() => visits.filter((event) => { const text = `${event.customer} ${event.customerId}`.toLowerCase(); const eventDate = dateKey(event.date); const sourceMatch = source === "All sources" || (source === "RFID" ? event.source.startsWith("RFID") : event.source === "Manual"); return (branch === "All branches" || event.branch === branch) && text.includes(query.toLowerCase()) && (status === "All statuses" || event.status === status) && sourceMatch && (!fromDate || eventDate >= fromDate) && (!toDate || eventDate <= toDate); }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.id.localeCompare(a.id)), [visits, branch, query, status, source, fromDate, toDate]);
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)); const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE); const setFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); }; const resetFilters = () => { setQuery(""); setStatus("All statuses"); setSource("All sources"); setBranch(isAdmin ? "All branches" : assignedBranch); setFromDate(""); setToDate(""); setPage(1); };
+  const [selected, setSelected] = useState<VisitRecord | null>(() => visits.find((event) => event.id === initialVisitId) ?? null); const [customerId, setCustomerId] = useState(""); const [status, setStatus] = useState("All statuses"); const [source, setSource] = useState("All sources"); const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch); const [fromDate, setFromDate] = useState(""); const [toDate, setToDate] = useState(""); const [page, setPage] = useState(1);
+  const filtered = useMemo(() => visits.filter((event) => { const eventDate = dateKey(event.date); const sourceMatch = source === "All sources" || (source === "RFID" ? event.source.startsWith("RFID") : event.source === "Manual"); return (branch === "All branches" || event.branch === branch) && (!customerId || event.customerId === customerId) && (status === "All statuses" || event.status === status) && sourceMatch && (!fromDate || eventDate >= fromDate) && (!toDate || eventDate <= toDate); }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.id.localeCompare(a.id)), [visits, branch, customerId, status, source, fromDate, toDate]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)); const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE); const setFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); }; const resetFilters = () => { setCustomerId(""); setStatus("All statuses"); setSource("All sources"); setBranch(isAdmin ? "All branches" : assignedBranch); setFromDate(""); setToDate(""); setPage(1); };
   if (selected) return <AttendanceDetails customer={customers.find((customer) => customer.id === selected.customerId)} event={selected} onBack={() => { setSelected(null); onInitialVisitHandled?.(); }} onOpenCustomer={onOpenCustomer} onSave={(updated, action) => { updateVisit(updated.id, { timeIn: updated.timeIn, timeOut: updated.timeOut, source: updated.source, status: updated.status, reason: updated.reason }); addAuditLog({ time: `${updated.date} · ${new Date().toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit" })}`, user: isAdmin ? "Admin User" : "Front Desk", role: isAdmin ? "Admin" : "Front Desk", branch: updated.branch, action, record: updated.id, summary: updated.reason ?? "Attendance record updated." }); setSelected(updated); onAction(action === "Attendance voided" ? "Attendance event voided" : "Attendance correction saved"); }} />;
   const activeRows = filtered.filter((event) => event.status !== "Voided");
   return (
@@ -43,10 +44,7 @@ export default function AttendancePage({ isAdmin, branch: assignedBranch = "Maka
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <label className="flex min-w-[210px] flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2">
-              <Search size={14} className="text-[var(--text-muted)]" />
-              <input value={query} onChange={(event) => setFilter(setQuery, event.target.value)} placeholder="Search customer or ID" className="w-full bg-transparent text-xs outline-none" />
-            </label>
+            <div className="min-w-[210px] flex-1"><CustomerCombobox customers={customers.filter((customer) => branch === "All branches" || customer.branch === branch)} value={customerId} onChange={(value) => { setCustomerId(value); setPage(1); }} placeholder="Filter by customer" aria-label="Filter attendance by customer" /></div>
             <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs">
               <span className="text-[var(--text-muted)]">From</span>
               <input type="date" value={fromDate} onChange={(event) => setFilter(setFromDate, event.target.value)} />
@@ -55,7 +53,7 @@ export default function AttendancePage({ isAdmin, branch: assignedBranch = "Maka
               <span className="text-[var(--text-muted)]">To</span>
               <input type="date" value={toDate} onChange={(event) => setFilter(setToDate, event.target.value)} />
             </label>
-            {isAdmin && <FilterSelect value={branch} onChange={(value) => setFilter(setBranch, value)} options={["All branches", ...branches.map((item) => item.name)]} />}
+            {isAdmin && <FilterSelect value={branch} onChange={(value) => { setFilter(setBranch, value); setCustomerId(""); }} options={["All branches", ...branches.map((item) => item.name)]} />}
             <FilterSelect value={source} onChange={(value) => setFilter(setSource, value)} options={["All sources", "RFID", "Manual"]} />
             <FilterSelect value={status} onChange={(value) => setFilter(setStatus, value)} options={["All statuses", "Checked in", "Completed", "Voided"]} />
           </div>
