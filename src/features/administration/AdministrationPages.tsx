@@ -4,7 +4,6 @@ import {
   Archive,
   Check,
   Eye,
-  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -13,6 +12,7 @@ import {
 import { formatPHP as php } from "../../lib/utils";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
+import OverlayDropdown from "../../components/shared/OverlayDropdown";
 import { useGymData } from "../../contexts/GymDataContext";
 import { nextMockId } from "../../services/mockApi";
 import type { BranchRecord } from "../../types";
@@ -361,21 +361,20 @@ function BranchList({
                   <td className="px-5 py-4">{branch.customers}</td>
                   <td className="px-5 py-4">{branch.memberships}</td>
                   <td className="px-5 py-4">{branch.visits}</td>
-                  <td className="px-5 py-4">{php(branch.revenue)}</td>
+                  <td className="px-5 py-4">{php(branch.revenue)}                  </td>
                   <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
-                    <details className="relative inline-block text-left">
-                      <summary aria-label={`Actions for ${branch.name}`} className="flex cursor-pointer list-none items-center rounded-lg border border-[var(--border)] p-2 text-[var(--text-muted)] hover:bg-[var(--bg)] [&::-webkit-details-marker]:hidden">
-                        <MoreHorizontal size={16} />
-                      </summary>
-                      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-left shadow-lg">
-                        <BranchActionButton icon={<Eye size={14} />} label="View" onClick={() => onSelect(branch)} />
-                        <BranchActionButton icon={<Pencil size={14} />} label="Edit" onClick={() => onEdit(branch)} />
-                        {branch.status === "Archived"
-                          ? <BranchActionButton icon={<Archive size={14} />} label="Unarchive" onClick={() => onUnarchive(branch)} />
-                          : <BranchActionButton icon={<Archive size={14} />} label="Archive" onClick={() => onArchive(branch)} />}
-                        <BranchActionButton icon={<Trash2 size={14} />} label="Delete" onClick={() => onDelete(branch)} danger />
-                      </div>
-                    </details>
+                    <OverlayDropdown
+                      label={`Actions for ${branch.name}`}
+                      className="flex rounded-lg border border-[var(--border)] p-2 text-[var(--text-muted)] hover:bg-[var(--bg)]"
+                      minWidth={160}
+                    >
+                      <BranchActionButton icon={<Eye size={14} />} label="View" onClick={() => onSelect(branch)} />
+                      <BranchActionButton icon={<Pencil size={14} />} label="Edit" onClick={() => onEdit(branch)} />
+                      {branch.status === "Archived"
+                        ? <BranchActionButton icon={<Archive size={14} />} label="Unarchive" onClick={() => onUnarchive(branch)} />
+                        : <BranchActionButton icon={<Archive size={14} />} label="Archive" onClick={() => onArchive(branch)} />}
+                      <BranchActionButton icon={<Trash2 size={14} />} label="Delete" onClick={() => onDelete(branch)} danger />
+                    </OverlayDropdown>
                   </td>
                 </tr>
               ))}
@@ -966,8 +965,8 @@ function BranchActionButton({
   return (
     <button
       type="button"
-      onClick={(event) => {
-        event.currentTarget.closest("details")?.removeAttribute("open");
+      role="menuitem"
+      onClick={() => {
         onClick();
       }}
       className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--bg)] ${danger ? "text-red-600" : ""}`}

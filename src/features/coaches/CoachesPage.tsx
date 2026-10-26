@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { MoreHorizontal, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import Modal from "../../components/shared/Modal";
+import OverlayDropdown from "../../components/shared/OverlayDropdown";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { Coach } from "../../types";
 
@@ -127,7 +128,7 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
                 <td className="text-[var(--text-muted)]">{coach.branch}</td>
                 <td className="text-[var(--text-muted)]">{coach.phone}</td>
                 <td><button onClick={() => toggleStatus(coach)} className="font-medium text-[var(--accent)]">{coach.status}</button></td>
-                <td className="text-right"><div className="group relative inline-block"><button aria-label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]"><MoreHorizontal size={17} /></button><div className="invisible absolute right-0 z-10 mt-1 w-32 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-left shadow-lg group-focus-within:visible group-hover:visible"><button onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button onClick={() => remove(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button></div></div></td>
+                <td className="text-right"><OverlayDropdown label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]" menuClassName="min-w-32"><button role="menuitem" onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button role="menuitem" onClick={() => remove(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button></OverlayDropdown></td>
               </tr>)}
             </tbody>
           </table>

@@ -3,13 +3,13 @@ import {
   ArrowLeft,
   Check,
   Edit3,
-  MoreHorizontal,
   Plus,
   Search,
 } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
 import { addBillingMonths, durationToMonths, membershipDueState } from "../../lib/membership";
 import Modal from "../../components/shared/Modal";
+import OverlayDropdown from "../../components/shared/OverlayDropdown";
 import FilterSelect from "../../components/shared/FilterSelect";
 import ManualAttendanceModal from "../../components/modals/ManualAttendanceModal";
 import { nextMockId, nowLabel } from "../../services/mockApi";
@@ -766,38 +766,28 @@ function RowActions({
   onDetails: () => void;
   onDelete: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative flex justify-end">
-      <button
-        aria-label="More options"
-        onClick={() => setOpen((current) => !current)}
+    <div className="flex justify-end">
+      <OverlayDropdown
+        label="More options"
         className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg)] hover:text-[var(--text)]"
+        menuClassName="min-w-32"
       >
-        <MoreHorizontal size={17} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-9 z-10 min-w-32 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 shadow-lg">
-          <button
-            onClick={() => {
-              setOpen(false);
-              onDetails();
-            }}
-            className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--bg)]"
-          >
-            View / edit
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            className="block w-full rounded-md px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
-          >
-            Delete
-          </button>
-        </div>
-      )}
+        <button
+          role="menuitem"
+          onClick={onDetails}
+          className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--bg)]"
+        >
+          View / edit
+        </button>
+        <button
+          role="menuitem"
+          onClick={onDelete}
+          className="block w-full rounded-md px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
+        >
+          Delete
+        </button>
+      </OverlayDropdown>
     </div>
   );
 }
