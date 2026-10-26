@@ -15,6 +15,7 @@ import Modal from "../../components/shared/Modal";
 import OverlayDropdown from "../../components/shared/OverlayDropdown";
 import { useGymData } from "../../contexts/GymDataContext";
 import { nextMockId } from "../../services/mockApi";
+import { toast } from "../../components/shared/toast";
 import type { BranchRecord } from "../../types";
 
 type Branch = BranchRecord;
@@ -230,7 +231,10 @@ export default function AdministrationPages({
                   setBranchAction(null);
                 } else {
                   const error = deleteBranch(branchAction.branch.id);
-                  if (error) setDeleteError(error);
+                  if (error) {
+                    setDeleteError(error);
+                    toast.error(error);
+                  }
                   else {
                     onAction(`${branchAction.branch.name} deleted`);
                     setBranchAction(null);
@@ -504,6 +508,10 @@ function BranchForm({
     branch?.status ?? "Active",
   );
   const [error, setError] = useState("");
+  const showValidationError = (message: string) => {
+    setError(message);
+    toast.warning(message);
+  };
   return (
     <FormShell
       title={branch ? "Edit branch" : "Create branch"}
@@ -539,7 +547,7 @@ function BranchForm({
       <button
         onClick={() => {
           if (!name.trim() || !location.trim())
-            return setError("Branch name and location are required.");
+            return showValidationError("Branch name and location are required.");
           onSave({
             id: branch?.id ?? "",
             name,

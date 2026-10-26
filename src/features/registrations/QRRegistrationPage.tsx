@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Activity, CheckCircle2, CreditCard, ShieldAlert } from "lucide-react";
 import { useGymData } from "../../contexts/GymDataContext";
 import { priceForCustomer } from "../../lib/pricing";
+import { toast } from "../../components/shared/toast";
 
 function branchIdFromUrl() { return new URLSearchParams(window.location.search).get("branchId") ?? ""; }
 
@@ -14,7 +15,50 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
   if (!branch) return <PublicShell><ShieldAlert className="mx-auto text-amber-500" size={28} /><h1 className="mt-4 text-xl font-bold">Invalid gym link</h1><p className="mt-2 text-sm text-[var(--text-muted)]">This QR link is missing a valid active branch. Ask the front desk for the correct branch QR code.</p></PublicShell>;
   if (message) return <PublicShell><CheckCircle2 className="mx-auto text-[var(--accent)]" size={32} /><h1 className="mt-4 text-xl font-bold">{message}</h1><p className="mt-2 text-sm text-[var(--text-muted)]">Branch: {branch.name}</p>{reference && <p className="mt-4 rounded-lg bg-[var(--bg)] px-3 py-2 text-xs">Reference: <strong>{reference}</strong></p>}<p className="mt-4 text-xs text-[var(--text-muted)]">Prototype mode: saved in browser-local mock data; no payment or identity verification was performed.</p></PublicShell>;
   const isProfile = mode === "profile";
-  const submit = () => { setError(""); if (!phone.trim() || (isProfile && !name.trim())) return setError(isProfile ? "Full name and mobile number are required." : "Mobile number is required."); if (!/^\+?[0-9 ()-]{10,20}$/.test(phone.trim())) return setError("Enter a valid mobile number."); setLoading(true); try { if (isProfile) { const result = submitProfileRegistration({ branchId, name, phone, email }); setReference(result.submission.reference); setMessage(result.duplicate ? "Submission received for duplicate review" : "Profile registration received"); } else { const result = checkInWalkIn(branchId, phone); if (result.kind === "not-found") return setError("No matching customer profile was found. Complete profile registration first or ask the front desk for help."); if (result.kind === "not-configured") return setError("The walk-in price is not configured. Please contact the front desk."); if (result.kind === "ambiguous") return setError("Multiple profiles match this number. Please ask the front desk to resolve your identity."); if (result.kind === "duplicate") return setError(`${result.customer.name} already has an open visit at ${branch.name}.`); setMessage("Walk-in check-in confirmed"); setReference(result.walkIn.id); } } catch (err) { setError(err instanceof Error ? err.message : "Unable to save this request."); } finally { setLoading(false); } };
+  const reportError = (message: string, failure = false) => {
+    setError(message);
+    if (failure) toast.error(message);
+    else toast.warning(message);
+  };
+  const submit = () => {
+    setError("");
+    if (!phone.trim() || (isProfile && !name.trim())) {
+      return reportError(isProfile ? "Full name and mobile number are required." : "Mobile number is required.");
+    }
+    if (!/^\+?[0-9 ()-]{10,20}$/.test(phone.trim())) {
+      return reportError("Enter a valid mobile number.");
+    }
+    setLoading(true);
+    try {
+      if (isProfile) {
+        const result = submitProfileRegistration({ branchId, name, phone, email });
+        setReference(result.submission.reference);
+        setMessage(result.duplicate ? "Submission received for duplicate review" : "Profile registration received");
+        toast.success(result.duplicate ? "Profile submission received for review." : "Profile registration received.");
+      } else {
+        const result = checkInWalkIn(branchId, phone);
+        if (result.kind === "not-found") {
+          return reportError("No matching customer profile was found. Complete profile registration first or ask the front desk for help.");
+        }
+        if (result.kind === "not-configured") {
+          return reportError("The walk-in price is not configured. Please contact the front desk for help.", true);
+        }
+        if (result.kind === "ambiguous") {
+          return reportError("Multiple profiles match this number. Please ask the front desk to resolve your identity.");
+        }
+        if (result.kind === "duplicate") {
+          return reportError(`${result.customer.name} already has an open visit at ${branch.name}.`);
+        }
+        setMessage("Walk-in check-in confirmed");
+        setReference(result.walkIn.id);
+        toast.success("Walk-in check-in confirmed.");
+      }
+    } catch (err) {
+      reportError(err instanceof Error ? err.message : "Unable to save this request.", true);
+    } finally {
+      setLoading(false);
+    }
+  };
   const walkInPriceConfig = servicePrices.find((item) => item.name === "Non-member walk-in" && item.active);
   const matchingCustomers = findCustomersByPhone(phone);
   const walkInPrice = walkInPriceConfig && matchingCustomers.length === 1 ? priceForCustomer(walkInPriceConfig, matchingCustomers[0].classification) : walkInPriceConfig?.amount;

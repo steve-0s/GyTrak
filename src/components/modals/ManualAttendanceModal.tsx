@@ -2,6 +2,7 @@ import { useState } from "react";
 import Modal from "../shared/Modal";
 import CustomerCombobox from "../shared/CustomerCombobox";
 import type { BranchRecord, Customer, Membership } from "../../types";
+import { toast } from "../shared/toast";
 
 type AttendanceInput = {
   customerId: string;
@@ -38,21 +39,28 @@ export default function ManualAttendanceModal({
   const [timeOut, setTimeOut] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const showValidationError = (message: string) => {
+    setError(message);
+    toast.warning(message);
+  };
   const selected = customers.find((customer) => customer.id === customerId);
   const membership = memberships.find((item) => item.customerId === customerId);
 
   const submit = () => {
     setError("");
-    if (!customerId || !selected) return setError("Select an existing customer.");
-    if (!branch) return setError("Select a branch.");
+    if (!customerId || !selected) return showValidationError("Select an existing customer.");
+    if (!branch) return showValidationError("Select a branch.");
     if (type === "Member" && (!membership || membership.status !== "Active")) {
-      return setError(`This customer does not have an active membership. Current status: ${membership?.status ?? "None"}.`);
+      return showValidationError(`This customer does not have an active membership. Current status: ${membership?.status ?? "None"}.`);
     }
     if (!/^\d{2}:\d{2}$/.test(timeIn) || (timeOut && !/^\d{2}:\d{2}$/.test(timeOut))) {
-      return setError("Enter valid time-in and time-out values.");
+      return showValidationError("Enter valid time-in and time-out values.");
     }
     const result = onSave({ customerId, branch, type, date: new Date(`${date}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "2-digit", year: "numeric" }), timeIn, timeOut: timeOut || "—", note: note.trim() || undefined });
-    if (result) setError(result);
+    if (result) {
+      setError(result);
+      toast.error(result);
+    }
   };
 
   return (

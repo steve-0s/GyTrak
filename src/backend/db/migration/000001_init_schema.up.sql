@@ -20,13 +20,20 @@ CREATE TABLE roles (
 );
 
 CREATE TABLE user_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     role_id UUID NOT NULL,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMPTZ,
 
-    PRIMARY KEY (user_id, role_id),
     FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (role_id) REFERENCES roles(id)
+    FOREIGN KEY (role_id) REFERENCES roles(id),
+    CHECK (revoked_at IS NULL OR revoked_at >= assigned_at)
 );
+
+CREATE UNIQUE INDEX idx_user_roles_one_active_assignment
+    ON user_roles(user_id, role_id)
+    WHERE revoked_at IS NULL;
 
 CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -61,6 +68,14 @@ CREATE TABLE user_branch_assignments (
 
     CHECK (revoked_at IS NULL OR revoked_at >= assigned_at)
 );
+
+CREATE UNIQUE INDEX idx_user_branch_assignments_one_active
+    ON user_branch_assignments(user_id, branch_id)
+    WHERE revoked_at IS NULL;
+
+CREATE INDEX idx_user_branch_assignments_branch_active
+    ON user_branch_assignments(branch_id, user_id)
+    WHERE revoked_at IS NULL;
 
 CREATE TABLE customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -121,6 +136,8 @@ CREATE TABLE membership_plans (
     promotion_code TEXT,
     promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
     free_intro_months INTEGER NOT NULL DEFAULT 0,
+    billing_start_mode TEXT NOT NULL DEFAULT 'after_intro',
+    custom_first_billing_date DATE,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -128,8 +145,13 @@ CREATE TABLE membership_plans (
     CHECK (duration_unit IN ('days', 'months')),
     CHECK (promotion_discount_percent BETWEEN 0 AND 100),
     CHECK (free_intro_months BETWEEN 0 AND 12),
+    CHECK (billing_start_mode IN ('immediate', 'after_intro', 'custom_date')),
+    CHECK ((billing_start_mode = 'custom_date') = (custom_first_billing_date IS NOT NULL)),
     CHECK (status IN ('active', 'inactive'))
 );
+
+CREATE UNIQUE INDEX idx_membership_plans_normalized_name
+    ON membership_plans(lower(trim(name)));
 
 CREATE TABLE membership_plan_prices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,6 +206,8 @@ CREATE TABLE membership_policies (
     max_promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 15,
     renewal_window_days INTEGER NOT NULL DEFAULT 7,
     overdue_access_policy TEXT NOT NULL DEFAULT 'allow_with_manager_review',
+    front_desk_can_pause_billing BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_custom_billing_start_dates BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -228,6 +252,13 @@ CREATE TABLE memberships (
     promotion_code TEXT,
     promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
     free_intro_months INTEGER NOT NULL DEFAULT 0,
+    billing_start_mode TEXT NOT NULL DEFAULT 'after_intro',
+    first_billing_date DATE,
+    initial_amount_due NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    outstanding_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    initiation_fee_outstanding NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    monthly_dues_outstanding NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    billing_paused BOOLEAN NOT NULL DEFAULT FALSE,
     payment_status TEXT NOT NULL DEFAULT 'pending',
     next_payment_due_date DATE,
     renewal_eligible BOOLEAN NOT NULL DEFAULT FALSE,
@@ -255,6 +286,13 @@ CREATE TABLE memberships (
     CHECK (initiation_fee_waived_amount BETWEEN 0 AND initiation_fee),
     CHECK (promotion_discount_percent BETWEEN 0 AND 100),
     CHECK (free_intro_months BETWEEN 0 AND 12),
+    CHECK (billing_start_mode IN ('immediate', 'after_intro', 'custom_date')),
+    CHECK (initial_amount_due >= 0),
+    CHECK (outstanding_balance >= 0),
+    CHECK (initiation_fee_outstanding >= 0),
+    CHECK (monthly_dues_outstanding >= 0),
+    CHECK (initiation_fee_outstanding + monthly_dues_outstanding = outstanding_balance),
+    CHECK (billing_start_mode <> 'custom_date' OR first_billing_date IS NOT NULL),
     CHECK (payment_status IN ('pending', 'partially_paid', 'paid', 'overdue', 'refunded')),
     CHECK (end_date >= start_date),
     CHECK (renewal_of_membership_id IS NULL OR renewal_of_membership_id <> id),
@@ -364,11 +402,39 @@ CREATE TABLE transaction_items (
     CHECK (line_total >= 0)
 );
 
+CREATE TABLE payment_methods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    branch_id UUID,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+
+    CHECK (length(trim(code)) > 0),
+    CHECK (length(trim(name)) > 0)
+);
+
+CREATE UNIQUE INDEX idx_payment_methods_global_name
+    ON payment_methods(lower(name))
+    WHERE branch_id IS NULL AND is_active;
+
+CREATE UNIQUE INDEX idx_payment_methods_branch_name
+    ON payment_methods(branch_id, lower(name))
+    WHERE branch_id IS NOT NULL AND is_active;
+
 CREATE TABLE payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     transaction_id UUID NOT NULL,
     amount NUMERIC(12, 2) NOT NULL,
+    payment_method_id UUID,
     payment_method TEXT NOT NULL,
+    payment_method_code_snapshot TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     reference_number TEXT,
     received_by UUID,
@@ -376,19 +442,44 @@ CREATE TABLE payments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+    FOREIGN KEY (payment_method_id) REFERENCES payment_methods(id) ON DELETE SET NULL,
     FOREIGN KEY (received_by) REFERENCES users(id),
 
     UNIQUE (id, transaction_id),
     CHECK (amount > 0),
-    CHECK (payment_method IN (
-        'cash',
-        'gcash',
-        'bank_transfer',
-        'card',
-        'other'
-    )),
+    CHECK (length(trim(payment_method)) > 0),
     CHECK (status IN ('pending', 'completed', 'failed', 'cancelled', 'refunded'))
 );
+
+CREATE INDEX idx_payments_payment_method_id ON payments(payment_method_id);
+
+CREATE TABLE membership_billing_pauses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    membership_id UUID NOT NULL,
+    start_date DATE NOT NULL,
+    expected_resume_date DATE,
+    resumed_at DATE,
+    reason TEXT NOT NULL,
+    recorded_by UUID,
+    resumed_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (membership_id) REFERENCES memberships(id),
+    FOREIGN KEY (recorded_by) REFERENCES users(id),
+    FOREIGN KEY (resumed_by) REFERENCES users(id),
+
+    CHECK (length(trim(reason)) > 0),
+    CHECK (expected_resume_date IS NULL OR expected_resume_date >= start_date),
+    CHECK (resumed_at IS NULL OR resumed_at >= start_date),
+    CHECK ((resumed_at IS NULL) = (resumed_by IS NULL))
+);
+
+CREATE UNIQUE INDEX idx_membership_billing_pauses_one_open
+    ON membership_billing_pauses(membership_id)
+    WHERE resumed_at IS NULL;
+
+CREATE INDEX idx_membership_billing_pauses_membership_start
+    ON membership_billing_pauses(membership_id, start_date DESC);
 
 CREATE TABLE payment_allocations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -770,7 +861,7 @@ CREATE INDEX idx_attendance_branch_date
     ON attendance_records(branch_id, business_date);
 
 CREATE UNIQUE INDEX idx_attendance_one_open_session
-    ON attendance_records(customer_id)
+    ON attendance_records(customer_id, branch_id)
     WHERE time_out IS NULL AND status = 'checked_in';
 
 CREATE UNIQUE INDEX idx_rfid_one_active_assignment

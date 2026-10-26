@@ -17,6 +17,7 @@ import { CalendarDays, Download, Search } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
 import { branchAnalytics } from "../../mockdata";
 import { useGymData } from "../../contexts/GymDataContext";
+import { isCollectedPayment, membershipOutstandingBalance } from "../../lib/financial";
 
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
@@ -33,14 +34,14 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
   const [query, setQuery] = useState("");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const referenceDate = getLatestDate([...payments.map((item) => item.date), ...walkIns.map((item) => item.date), ...memberships.map((item) => item.start)]) ?? new Date();
+  const referenceDate = businessToday();
   const period = getReportPeriod(range, referenceDate, customStart, customEnd);
   const inPeriod = (value: string) => { const date = parseReportDate(value, referenceDate); return date >= period.start && date <= period.end; };
   const selectedBranch = branchRecords.filter((item) => item.status === "Active" && (branch === "All branches" || item.name === branch)).map((item) => {
     const branchVisits = visits.filter((visit) => visit.branch === item.name && inPeriod(visit.date));
     const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name && inPeriod(visit.date));
     const branchMemberships = memberships.filter((membership) => membership.branch === item.name);
-    const branchPayments = payments.filter((payment) => (payment.branch ?? branchMemberships.find((membership) => membership.id === payment.membershipId)?.branch) === item.name && (payment.status ?? "Paid") === "Paid" && inPeriod(payment.date));
+    const branchPayments = payments.filter((payment) => (payment.branch ?? branchMemberships.find((membership) => membership.id === payment.membershipId)?.branch) === item.name && isCollectedPayment(payment) && inPeriod(payment.date));
     return { branch: item.name, visits: branchVisits.length, members: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: branchPayments.reduce((sum, payment) => sum + payment.amount, 0) };
   });
   const scopedWalkIns = walkIns.filter(
@@ -51,9 +52,11 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
   );
   const scopedMemberships = memberships.filter((membership) => branch === "All branches" || membership.branch === branch);
   const scopedPayments = payments.filter((payment) => (branch === "All branches" || payment.branch === branch || scopedMemberships.some((membership) => membership.id === payment.membershipId)) && inPeriod(payment.date));
-  const paidPayments = scopedPayments.filter((payment) => (payment.status ?? "Paid") === "Paid");
+  const paidPayments = scopedPayments.filter(isCollectedPayment);
   const pendingWalkIns = scopedWalkIns.filter((visit) => visit.payment === "Pending");
-  const pendingMemberships = scopedMemberships.filter((membership) => membership.payment === "Pending");
+  const pendingMemberships = scopedMemberships
+    .filter((membership) => membershipOutstandingBalance(membership) > 0)
+    .map((membership) => ({ ...membership, price: membershipOutstandingBalance(membership) }));
   const reportMetrics = {
     uniqueVisitors: new Set(scopedAttendance.map((event) => event.customerId)).size,
     manualCorrections: auditLogs.filter(
@@ -158,7 +161,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
           </span>
         )}
       </div>
-      {category === "Overview" ? <OverviewReport summary={summary} paidPayments={paidPayments} pendingWalkIns={pendingWalkIns} pendingMemberships={pendingMemberships} memberships={scopedMemberships} visits={scopedAttendance} /> : category === "Financial" ? (
+      {category === "Overview" ? <OverviewReport summary={summary} paidPayments={paidPayments} pendingWalkIns={pendingWalkIns} pendingMemberships={pendingMemberships} memberships={scopedMemberships} visits={scopedAttendance} newMembershipCount={scopedMemberships.filter((membership) => inPeriod(membership.start)).length} /> : category === "Financial" ? (
         <RevenueReport payments={paidPayments} pendingWalkIns={pendingWalkIns} pendingMemberships={pendingMemberships} />
       ) : category === "Branch Comparison" ? (
         <BranchReport rows={selectedBranch} query={query} setQuery={setQuery} />
@@ -184,29 +187,55 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
   );
 }
 
-function parseReportDate(value: string, reference: Date) {
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-  return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+function businessToday() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  return new Date(part("year"), part("month") - 1, part("day"));
 }
-function getLatestDate(values: string[]) {
-  const dates = values.map((value) => new Date(value)).filter((value) => !Number.isNaN(value.getTime()));
-  return dates.length ? new Date(Math.max(...dates.map((value) => value.getTime()))) : undefined;
+function parseReportDate(value: string, reference: Date) {
+  const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) return new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]));
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  if (!/[T ]\d{1,2}:\d{2}|Z$|[+-]\d{2}:?\d{2}$/.test(value)) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(parsed);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  return new Date(part("year"), part("month") - 1, part("day"));
 }
 function getReportPeriod(range: string, reference: Date, start: string, end: string) {
   const finish = end ? new Date(`${end}T23:59:59`) : new Date(reference);
-  const begin = start ? new Date(`${start}T00:00:00`) : new Date(reference);
-  if (!start) begin.setDate(begin.getDate() - (range === "Last 30 days" ? 29 : range === "Last 90 days" ? 89 : 6));
+  const begin = start
+    ? new Date(`${start}T00:00:00`)
+    : new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  if (!start) {
+    if (range === "This month") begin.setDate(1);
+    else if (range === "This week") begin.setDate(begin.getDate() - ((begin.getDay() + 6) % 7));
+    else if (range === "Last 30 days") begin.setDate(begin.getDate() - 29);
+    else if (range === "Last 90 days") begin.setDate(begin.getDate() - 89);
+    else if (range !== "Today" && range !== "Custom") begin.setDate(begin.getDate() - 6);
+  }
   return { start: begin, end: range === "Custom" && end ? finish : new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 23, 59, 59) };
 }
 function groupByDate<T>(items: T[], getDate: (item: T) => string, getValue: (items: T[]) => number) {
   return Array.from(new Set(items.map(getDate))).sort((a, b) => parseReportDate(a, new Date()).getTime() - parseReportDate(b, new Date()).getTime()).map((day) => ({ day, visits: getValue(items.filter((item) => getDate(item) === day)) }));
 }
 
-function OverviewReport({ summary, paidPayments, pendingWalkIns, pendingMemberships, memberships, visits }: { summary: { visits: number; revenue: number; members: number; walkIns: number }; paidPayments: Array<{ amount: number }>; pendingWalkIns: Array<{ fee: number }>; pendingMemberships: Array<{ price: number }>; memberships: Array<{ status: string; start: string; end: string }>; visits: Array<{ customerId: string }> }) {
+function OverviewReport({ summary, paidPayments, pendingWalkIns, pendingMemberships, memberships, visits, newMembershipCount }: { summary: { visits: number; revenue: number; members: number; walkIns: number }; paidPayments: Array<{ amount: number }>; pendingWalkIns: Array<{ fee: number }>; pendingMemberships: Array<{ price: number }>; memberships: Array<{ status: string; start: string; end: string }>; visits: Array<{ customerId: string }>; newMembershipCount: number }) {
   const pending = pendingWalkIns.reduce((sum, item) => sum + item.fee, 0) + pendingMemberships.reduce((sum, item) => sum + item.price, 0);
   const active = memberships.filter((item) => item.status === "Active").length;
-  const newMemberships = memberships.filter((item) => item.start.includes("2026") || item.start.includes("Oct")).length;
+  const newMemberships = newMembershipCount;
   const unique = new Set(visits.map((item) => item.customerId)).size;
   return <><div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Metric label="Collected payments" value={php(summary.revenue)} /><Metric label="Pending amount" value={php(pending)} /><Metric label="Visits" value={String(summary.visits)} /><Metric label="Active memberships" value={String(active)} /></div><ReportTable title="Overview definitions" columns={["Metric", "Value", "Definition"]} rows={[["Walk-in visits", String(summary.walkIns), "Visits in the selected period"],["Unique visitors", String(unique), "Distinct customer IDs in attendance events"],["New memberships", String(newMemberships), "Memberships with a start date in the selected period"],["Paid transactions", String(paidPayments.length), "Payment records marked Paid; pending amounts excluded"]]} /></>;
 }
@@ -399,7 +428,7 @@ function WalkInReport({
   );
 }
 function RevenueReport({ payments, pendingWalkIns, pendingMemberships }: { payments: Array<{ date: string; amount: number; category?: string; serviceName?: string }>; pendingWalkIns: Array<{ customer: string; branch: string; fee: number; date: string }>; pendingMemberships: Array<{ customer: string; branch: string; price: number; start: string }> }) {
-  const byCategory = ["Membership", "Walk-in", "Coaching", "Other service"].map((category) => ({ category, amount: payments.filter((payment) => (payment.category ?? "Membership") === category).reduce((sum, payment) => sum + payment.amount, 0) }));
+  const byCategory = ["Initiation fee", "Monthly dues", "Renewal fee", "Membership", "Walk-in", "Coaching", "Other service"].map((category) => ({ category, amount: payments.filter((payment) => (payment.category ?? "Membership") === category).reduce((sum, payment) => sum + payment.amount, 0) }));
   const trend = Array.from(new Set(payments.map((payment) => payment.date))).map((date) => ({ date, revenue: payments.filter((payment) => payment.date === date).reduce((sum, payment) => sum + payment.amount, 0) }));
   const total = payments.reduce((sum, payment) => sum + payment.amount, 0);
   return (

@@ -2,8 +2,9 @@ import { useState, type ReactNode } from "react";
 import type { AuthAccount } from "../../contexts/AuthContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { useGymData } from "../../contexts/GymDataContext";
-import type { ServicePrice } from "../../types";
+import type { PaymentMethod, ServicePrice } from "../../types";
 import { nextMockId } from "../../services/mockApi";
+import { toast } from "../../components/shared/toast";
 
 type Props = {
   onAction: (message: string) => void;
@@ -37,15 +38,7 @@ function readSettings(role: "Admin" | "Front Desk", accountId?: string): Display
 export default function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: Props) {
   const { role } = useAuth();
   const isAdmin = role === "Admin";
-  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings, resetDemoData } = useGymData();
-  const [membershipPolicy, setMembershipPolicy] = useState({
-    defaultDurationMonths: 1 as 1 | 3 | 6 | 12,
-    renewalWindowDays: 7,
-    overdueAccessPolicy: "Allow with manager review" as "Restrict access" | "Allow with manager review" | "Allow with warning",
-    initiationFeePolicy: "Charge standard fee" as "Charge standard fee" | "Waive first month" | "Apply campaign waiver",
-    maxPromotionDiscountPercent: 15,
-    freeIntroMonthsCap: 2,
-  });
+  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings, resetDemoData, paymentMethods, upsertPaymentMethod, branches, membershipPolicySettings: membershipPolicy, updateMembershipPolicySettings: setMembershipPolicy } = useGymData();
   const [initialSettings] = useState(() => readSettings(role, account?.id));
   const [name, setName] = useState(initialSettings.name);
   const [currency, setCurrency] = useState(initialSettings.currency);
@@ -67,7 +60,10 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
     if (!onChangeEmail) return;
     setSecurityError("");
     const error = await onChangeEmail(newEmail, emailConfirmation, emailPassword);
-    if (error) setSecurityError(error);
+    if (error) {
+      setSecurityError(error);
+      toast.error(error);
+    }
     else {
       setSecurityMessage("Email updated. Verification is required before it is treated as verified.");
       setEmailPassword("");
@@ -77,7 +73,10 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
     if (!onChangePassword) return;
     setSecurityError("");
     const error = await onChangePassword(currentPassword, newPassword, passwordConfirmation);
-    if (error) setSecurityError(error);
+    if (error) {
+      setSecurityError(error);
+      toast.error(error);
+    }
     else {
       setSecurityMessage("Password updated in the mock account store.");
       setCurrentPassword("");
@@ -95,13 +94,19 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
   const savePrice = (price: ServicePrice, amount: string, studentAmount: string) => {
     const value = Number(amount);
     const studentValue = studentAmount.trim() === "" ? undefined : Number(studentAmount);
-    if (!Number.isFinite(value) || value < 0 || Math.round(value * 100) !== value * 100 || (studentValue !== undefined && (!Number.isFinite(studentValue) || studentValue < 0 || Math.round(studentValue * 100) !== studentValue * 100))) return;
+    if (!Number.isFinite(value) || value < 0 || Math.round(value * 100) !== value * 100 || (studentValue !== undefined && (!Number.isFinite(studentValue) || studentValue < 0 || Math.round(studentValue * 100) !== studentValue * 100))) {
+      toast.warning("Enter valid service prices with up to two decimal places.");
+      return;
+    }
     upsertServicePrice({ ...price, amount: value, studentAmount: studentValue });
     onAction(`${price.name} price updated`);
   };
   const addServicePrice = () => {
     const amount = Number(newServiceAmount);
-    if (!newServiceName.trim() || !Number.isFinite(amount) || amount < 0 || Math.round(amount * 100) !== amount * 100) return;
+    if (!newServiceName.trim() || !Number.isFinite(amount) || amount < 0 || Math.round(amount * 100) !== amount * 100) {
+      toast.warning("Enter a service name and valid price with up to two decimal places.");
+      return;
+    }
     upsertServicePrice({ id: nextMockId("SR", 10), name: newServiceName.trim(), category: "Other service", amount, active: true });
     setNewServiceName("");
     setNewServiceAmount("0");
@@ -177,9 +182,21 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
                 <label className="block"><span className="mb-1.5 block text-xs font-medium">Initiation fee policy</span><select value={membershipPolicy.initiationFeePolicy} onChange={(event) => setMembershipPolicy({ ...membershipPolicy, initiationFeePolicy: event.target.value as "Charge standard fee" | "Waive first month" | "Apply campaign waiver" })} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm"><option>Charge standard fee</option><option>Waive first month</option><option>Apply campaign waiver</option></select></label>
                 <label className="block"><span className="mb-1.5 block text-xs font-medium">Max promo discount</span><input type="number" min="0" max="100" value={membershipPolicy.maxPromotionDiscountPercent} onChange={(event) => setMembershipPolicy({ ...membershipPolicy, maxPromotionDiscountPercent: Number(event.target.value) || 0 })} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm" /></label>
                 <label className="block"><span className="mb-1.5 block text-xs font-medium">Free intro months cap</span><input type="number" min="0" max="12" value={membershipPolicy.freeIntroMonthsCap} onChange={(event) => setMembershipPolicy({ ...membershipPolicy, freeIntroMonthsCap: Number(event.target.value) || 0 })} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm" /></label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={membershipPolicy.frontDeskCanPauseBilling} onChange={(event) => setMembershipPolicy({ ...membershipPolicy, frontDeskCanPauseBilling: event.target.checked })} />Allow Front Desk to pause billing</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={membershipPolicy.customBillingStartAllowed} onChange={(event) => setMembershipPolicy({ ...membershipPolicy, customBillingStartAllowed: event.target.checked })} />Allow custom billing start dates</label>
               </div>
               <p className="mt-3 text-xs text-[var(--text-muted)]">Front Desk users can review these policies but cannot modify them without admin access.</p>
             </Panel>
+            <PaymentMethodsPanel
+              methods={paymentMethods}
+              branches={branches.filter((branch) => branch.status === "Active").map((branch) => branch.name)}
+              onSave={(method, isNew) => {
+                const error = upsertPaymentMethod(method);
+                if (error) toast.warning(error);
+                else onAction(isNew ? "Payment method added" : "Payment method updated");
+                return error;
+              }}
+            />
             <Panel title="Service pricing">
               <p className="mb-4 text-xs text-[var(--text-muted)]">Prices apply to new transactions. Recorded payment amounts are not changed when a rate is updated.</p>
               <div className="space-y-3">
@@ -206,6 +223,122 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function PaymentMethodsPanel({
+  methods,
+  branches,
+  onSave,
+}: {
+  methods: PaymentMethod[];
+  branches: string[];
+  onSave: (method: PaymentMethod, isNew?: boolean) => string | null;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [branch, setBranch] = useState("");
+
+  const addMethod = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast.warning("Enter a payment method name.");
+      return;
+    }
+    const codeBase = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const method: PaymentMethod = {
+      id: nextMockId("PM", methods.length + 1),
+      code: `${codeBase || "method"}-${methods.length + 1}`,
+      name: trimmedName,
+      description: description.trim() || undefined,
+      active: true,
+      branch: branch || undefined,
+    };
+    const error = onSave(method, true);
+    if (!error) {
+      setName("");
+      setDescription("");
+      setBranch("");
+    }
+  };
+
+  return (
+    <Panel title="Payment methods">
+      <p className="mb-4 text-xs text-[var(--text-muted)]">
+        Configure the methods staff can select when recording payments. Disabling a method only affects new payments; existing payment history keeps its recorded method.
+      </p>
+      <div className="space-y-3">
+        {methods.map((method) => (
+          <PaymentMethodRow key={method.id} method={method} branches={branches} onSave={onSave} />
+        ))}
+      </div>
+      <div className="mt-5 border-t border-[var(--border)] pt-4">
+        <h3 className="mb-3 text-sm font-semibold">Add a payment method</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField label="Display name" value={name} onChange={setName} placeholder="e.g. Maya" />
+          <TextField label="Instructions (optional)" value={description} onChange={setDescription} placeholder="e.g. Confirm transfer reference" />
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium">Availability</span>
+            <select value={branch} onChange={(event) => setBranch(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm">
+              <option value="">All branches</option>
+              {branches.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <div className="flex items-end">
+            <button type="button" onClick={addMethod} className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]">Add method</button>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function PaymentMethodRow({
+  method,
+  branches,
+  onSave,
+}: {
+  key?: string;
+  method: PaymentMethod;
+  branches: string[];
+  onSave: (method: PaymentMethod, isNew?: boolean) => string | null;
+}) {
+  const [name, setName] = useState(method.name);
+  const [description, setDescription] = useState(method.description ?? "");
+  const [branch, setBranch] = useState(method.branch ?? "");
+  const [active, setActive] = useState(method.active);
+  const save = () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      toast.warning("Payment method name cannot be empty.");
+      return;
+    }
+    onSave({
+      ...method,
+      name: trimmedName,
+      description: description.trim() || undefined,
+      branch: branch || undefined,
+      active,
+    });
+  };
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-[var(--border)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(9rem,0.8fr)_auto_auto] sm:items-end">
+      <TextField label="Display name" value={name} onChange={setName} placeholder="Payment method" />
+      <TextField label="Instructions" value={description} onChange={setDescription} placeholder="Optional" />
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium">Availability</span>
+        <select value={branch} onChange={(event) => setBranch(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2.5 text-sm">
+          <option value="">All branches</option>
+          {branches.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 py-2.5 text-xs">
+        <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
+        {active ? "Active" : "Inactive"}
+      </label>
+      <button type="button" onClick={save} className="rounded-lg border border-[var(--border)] px-3 py-2.5 text-xs font-semibold">Save</button>
     </div>
   );
 }

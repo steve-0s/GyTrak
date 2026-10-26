@@ -2,15 +2,25 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { auditLogs as seedAuditLogs, branches as seedBranches, coaches as seedCoaches, customers as seedCustomers, frontDeskAccounts as seedAccounts, keyfobs as seedKeyfobs, membershipPayments as seedPayments, membershipPlans as seedPlans, memberships as seedMemberships, reminderRecords as seedReminderRecords, visitRecords as seedVisits, walkIns as seedWalkIns } from "../mockdata";
 import { nextMockId, nowLabel } from "../services/mockApi";
 import { normalizePhone } from "../lib/utils";
-import { addBillingMonths, durationToMonths } from "../lib/membership";
-import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipPlan, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn, ReminderRecord, ReminderSettings } from "../types";
+import { addBillingMonths, durationToMonths, parseMembershipDate } from "../lib/membership";
+import type { AuditLog, BranchRecord, Coach, Customer, FrontDeskAccount, Keyfob, Membership, MembershipBillingPause, MembershipPlan, MembershipPolicySettings, PaymentMethod, PaymentRecord, RegistrationSubmission, RegistrationStatus, ServicePrice, VisitRecord, WalkIn, ReminderRecord, ReminderSettings } from "../types";
 import { defaultReminderSettings, daysUntil, reminderStage, renderTemplate } from "../lib/reminders";
-import { defaultServicePrices as pricingServicePrices } from "../lib/pricing";
+import { defaultPaymentMethods, defaultServicePrices as pricingServicePrices } from "../lib/pricing";
 
 const storageKey = "gytrak-mock-gym-data-v2";
 const branchRecords: BranchRecord[] = seedBranches.map((branch) => ({ ...branch }));
+const defaultMembershipPolicySettings: MembershipPolicySettings = {
+  defaultDurationMonths: 1,
+  renewalWindowDays: 7,
+  overdueAccessPolicy: "Allow with manager review",
+  initiationFeePolicy: "Charge standard fee",
+  maxPromotionDiscountPercent: 15,
+  freeIntroMonthsCap: 2,
+  frontDeskCanPauseBilling: false,
+  customBillingStartAllowed: false,
+};
 
-type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[]; reminderRecords: ReminderRecord[]; reminderSettings: ReminderSettings };
+type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; membershipPolicySettings: MembershipPolicySettings; paymentMethods: PaymentMethod[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[]; reminderRecords: ReminderRecord[]; reminderSettings: ReminderSettings };
 type ProfileInput = { branchId: string; name: string; phone: string; email: string };
 type GymDataContextValue = GymData & {
   branches: BranchRecord[];
@@ -26,12 +36,16 @@ type GymDataContextValue = GymData & {
   updateWalkIn: (id: string, update: Partial<WalkIn>) => void;
   addWalkIn: (walkIn: WalkIn) => void;
   removeWalkIn: (id: string) => void;
-  createMembership: (membership: Membership) => void;
+  createMembership: (membership: Membership) => string | null;
   updateMembership: (membership: Membership) => void;
+  pauseMembershipBilling: (id: string, pause: MembershipBillingPause) => string | null;
+  resumeMembershipBilling: (id: string, resumedAt: string, resumedBy: string) => string | null;
   removeMembership: (id: string) => void;
   addMembershipPlan: (plan: MembershipPlan) => void;
+  updateMembershipPolicySettings: (settings: MembershipPolicySettings) => void;
+  upsertPaymentMethod: (method: PaymentMethod) => string | null;
   upsertServicePrice: (price: ServicePrice) => void;
-  recordMembershipPayment: (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => void;
+  recordMembershipPayment: (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => string | null;
   upsertCoach: (coach: Coach) => void;
   removeCoach: (id: string) => void;
   assignKeyfob: (id: string, customer: string, branch: string) => void;
@@ -55,6 +69,8 @@ function seedData(): GymData {
     visits: seedVisits.map((item) => ({ ...item })),
     memberships: seedMemberships.map((item) => ({ ...item })),
     membershipPlans: seedPlans.map((item) => ({ ...item, durationMonths: item.durationMonths ?? 1, monthlyDues: item.monthlyDues ?? item.price, initiationFee: item.initiationFee ?? 0, freeIntroMonths: item.freeIntroMonths ?? 0 } as MembershipPlan)),
+    membershipPolicySettings: { ...defaultMembershipPolicySettings },
+    paymentMethods: defaultPaymentMethods.map((item) => ({ ...item })),
     servicePrices: defaultServicePrices(),
     payments: seedPayments.map((item) => ({ ...item })),
     coaches: seedCoaches.map((item) => ({ ...item })),
@@ -83,6 +99,8 @@ function readData(): GymData {
       visits: mergeSeedRecords(seedVisits as VisitRecord[], stored.visits, (item) => item.id),
       memberships: mergeSeedRecords(seedMemberships, stored.memberships ?? [], (item) => item.id),
       membershipPlans: mergeSeedRecords(seedPlans as MembershipPlan[], stored.membershipPlans ?? [], (item) => item.name),
+      membershipPolicySettings: { ...defaultMembershipPolicySettings, ...(stored.membershipPolicySettings ?? {}) },
+      paymentMethods: mergeSeedRecords(defaultPaymentMethods, stored.paymentMethods ?? [], (item) => item.id),
       servicePrices: stored.servicePrices ?? defaultServicePrices(),
       payments: mergeSeedRecords(seedPayments, stored.payments ?? [], (item) => item.id),
       coaches: mergeSeedRecords(seedCoaches, stored.coaches ?? [], (item) => item.id),
@@ -205,19 +223,139 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   };
   const removeWalkIn = (id: string) => persist({ ...data, walkIns: data.walkIns.filter((item) => item.id !== id) });
   const createMembership = (membership: Membership) => {
-    const payment = membership.payment === "Paid" ? { id: nextMockId("PAY", 400), membershipId: membership.id, date: membership.start, amount: membership.price, method: membership.paymentMethod ?? "Cash", reference: membership.id, category: "Membership" as const, branch: membership.branch, status: "Paid" as const, serviceName: membership.plan } : undefined;
-    persist({ ...data, memberships: [membership, ...data.memberships], payments: payment ? [payment, ...data.payments] : data.payments });
+    const initialAmount = membership.initialAmountDue ?? membership.price;
+    const initialPayments: PaymentRecord[] = [];
+    if (membership.payment === "Paid" && initialAmount > 0) {
+      const method = data.paymentMethods.find((item) => item.id === membership.paymentMethodId && item.active && (!item.branch || item.branch === membership.branch));
+      if (!method) return "Select an active payment method available for this branch.";
+      if (membership.initiationFee > 0) {
+        initialPayments.push({ id: nextMockId("PAY", 400), membershipId: membership.id, date: membership.start, amount: membership.initiationFee, amountDue: membership.initiationFee, method: method.name, paymentMethodId: method.id, reference: `${membership.id}-FEE`, category: "Initiation fee", branch: membership.branch, status: "Paid", serviceName: membership.plan });
+      }
+      const duesDue = Math.max(initialAmount - membership.initiationFee, 0);
+      if (duesDue > 0) {
+        initialPayments.push({ id: nextMockId("PAY", 400), membershipId: membership.id, date: membership.start, amount: duesDue, amountDue: duesDue, method: method.name, paymentMethodId: method.id, reference: `${membership.id}-DUES`, category: "Monthly dues", branch: membership.branch, status: "Paid", serviceName: membership.plan, billingPeriod: membership.firstBillingDate });
+      }
+    }
+    persist({ ...data, memberships: [membership, ...data.memberships], payments: [...initialPayments, ...data.payments] });
+    return null;
   };
   const updateMembership = (membership: Membership) => persist({ ...data, memberships: data.memberships.map((item) => item.id === membership.id ? membership : item) });
-  const removeMembership = (id: string) => persist({ ...data, memberships: data.memberships.filter((item) => item.id !== id), payments: data.payments.filter((item) => item.membershipId !== id) });
+  const pauseMembershipBilling = (id: string, pause: MembershipBillingPause) => {
+    const membership = data.memberships.find((item) => item.id === id);
+    if (!membership) return "Membership was not found.";
+    if (membership.billingPaused) return "Billing is already paused for this membership.";
+    if (membership.status === "Expired") return "Billing cannot be paused for an expired membership.";
+    if (!pause.reason.trim()) return "Enter a reason for pausing billing.";
+    if (!parseMembershipDate(pause.startDate)) return "Choose a valid billing pause start date.";
+    if (pause.expectedResumeDate && pause.expectedResumeDate < pause.startDate) return "Expected resume date cannot be before the pause start date.";
+    persist({
+      ...data,
+      memberships: data.memberships.map((item) => item.id === id
+        ? { ...item, billingPaused: true, billingPauses: [...(item.billingPauses ?? []), pause] }
+        : item),
+    });
+    return null;
+  };
+  const resumeMembershipBilling = (id: string, resumedAt: string, resumedBy: string) => {
+    const membership = data.memberships.find((item) => item.id === id);
+    if (!membership) return "Membership was not found.";
+    if (!membership.billingPaused) return "Billing is not currently paused for this membership.";
+    if (!parseMembershipDate(resumedAt)) return "Choose a valid billing resume date.";
+    const pauses = membership.billingPauses ?? [];
+    let activePauseIndex = -1;
+    for (let index = pauses.length - 1; index >= 0; index -= 1) {
+      if (!pauses[index].resumedAt) {
+        activePauseIndex = index;
+        break;
+      }
+    }
+    if (activePauseIndex < 0) return "No active billing pause was found.";
+    const activePause = pauses[activePauseIndex];
+    if (resumedAt < activePause.startDate) return "Resume date cannot be before the pause start date.";
+    const updatedPauses = pauses.map((pause, index) => index === activePauseIndex
+      ? { ...pause, resumedAt, resumedBy }
+      : pause);
+    persist({
+      ...data,
+      memberships: data.memberships.map((item) => item.id === id
+        ? { ...item, billingPaused: false, billingPauses: updatedPauses }
+        : item),
+    });
+    return null;
+  };
+  const removeMembership = (id: string) => persist({
+    ...data,
+    memberships: data.memberships.map((item) => item.id === id
+      ? { ...item, status: "Cancelled", cancelledAt: nowLabel(), billingPaused: false }
+      : item),
+  });
   const addMembershipPlan = (plan: MembershipPlan) => persist({ ...data, membershipPlans: data.membershipPlans.some((item) => item.name === plan.name) ? data.membershipPlans.map((item) => item.name === plan.name ? plan : item) : [...data.membershipPlans, plan] });
+  const updateMembershipPolicySettings = (settings: MembershipPolicySettings) => persist({ ...data, membershipPolicySettings: settings });
+  const upsertPaymentMethod = (method: PaymentMethod) => {
+    if (!method.name.trim()) return "Enter a payment method name.";
+    if (!method.code.trim()) return "Payment method code cannot be empty.";
+    if (data.paymentMethods.some((item) => item.id !== method.id && item.code.toLowerCase() === method.code.toLowerCase())) return "Payment method code must be unique.";
+    const duplicate = data.paymentMethods.find((item) =>
+      item.id !== method.id &&
+      item.active &&
+      method.active &&
+      item.name.trim().toLowerCase() === method.name.trim().toLowerCase() &&
+      (item.branch ?? "") === (method.branch ?? ""),
+    );
+    if (duplicate) return `An active payment method named "${duplicate.name}" already exists for this scope.`;
+    const existing = data.paymentMethods.find((item) => item.id === method.id);
+    const updatedMethod = existing ? { ...method, code: existing.code } : method;
+    persist({
+      ...data,
+      paymentMethods: existing
+        ? data.paymentMethods.map((item) => item.id === method.id ? updatedMethod : item)
+        : [...data.paymentMethods, updatedMethod],
+    });
+    return null;
+  };
   const upsertServicePrice = (price: ServicePrice) => persist({ ...data, servicePrices: data.servicePrices.some((item) => item.id === price.id) ? data.servicePrices.map((item) => item.id === price.id ? price : item) : [...data.servicePrices, price] });
   const recordMembershipPayment = (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => {
     const membership = data.memberships.find((item) => item.id === membershipId);
-    if (!membership) return;
-    if (data.payments.some((item) => item.membershipId === membershipId && item.reference === payment.reference && payment.reference)) return;
-    const record = { ...payment, id: nextMockId("PAY", 400), membershipId, category: "Membership" as const, branch: membership.branch, status: "Paid" as const, serviceName: membership.plan };
-    persist({ ...data, payments: [record, ...data.payments], memberships: data.memberships.map((item) => item.id === membershipId ? { ...item, payment: "Paid", status: item.status === "Expired" ? "Active" : item.status, end: addBillingMonths(item.end, durationToMonths(item.plan)) } : item) });
+    if (!membership) return "Membership was not found.";
+    const method = data.paymentMethods.find((item) => item.id === payment.paymentMethodId && item.active && (!item.branch || item.branch === membership.branch));
+    if (!method) return "Select an active payment method available for this branch.";
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) return "Payment amount must be greater than zero.";
+    if (data.payments.some((item) => item.membershipId === membershipId && item.reference === payment.reference && payment.reference && payment.reference !== "—")) return "This payment reference has already been recorded.";
+    const outstanding = membership.outstandingBalance ?? (membership.payment === "Paid" ? 0 : membership.initialAmountDue ?? membership.price);
+    if (membership.billingPaused && payment.category === "Monthly dues") return "Monthly dues cannot be collected while billing is paused.";
+    const cycleDue = Math.max(0, membership.monthlyDues - membership.promoDiscount);
+    let feeDue = membership.initiationFeeOutstanding ?? Math.min(outstanding, membership.initiationFee);
+    let duesDue = membership.monthlyDuesOutstanding ?? Math.max(0, outstanding - feeDue);
+    if (outstanding === 0) duesDue = cycleDue;
+    const amountDue = outstanding > 0 ? feeDue + duesDue : cycleDue;
+    if (payment.amount > amountDue) return `Payment cannot exceed the amount due of ${amountDue}.`;
+    const feePaid = Math.min(payment.amount, feeDue);
+    const duesPaid = Math.max(0, payment.amount - feePaid);
+    feeDue = Math.max(0, feeDue - feePaid);
+    duesDue = Math.max(0, duesDue - duesPaid);
+    const remaining = feeDue + duesDue;
+    const nextDueDate = duesPaid > 0 && duesDue === 0
+      ? addBillingMonths(membership.nextDueDate ?? membership.firstBillingDate ?? membership.end, 1)
+      : membership.nextDueDate;
+    const record: PaymentRecord = {
+      ...payment,
+      method: method.name,
+      paymentMethodId: method.id,
+      id: nextMockId("PAY", 400),
+      membershipId,
+      category: payment.category ?? "Membership",
+      branch: membership.branch,
+      status: "Paid",
+      serviceName: membership.plan,
+    };
+    persist({
+      ...data,
+      payments: [record, ...data.payments],
+      memberships: data.memberships.map((item) => item.id === membershipId
+        ? { ...item, outstandingBalance: remaining, initiationFeeOutstanding: feeDue, monthlyDuesOutstanding: duesDue, payment: remaining === 0 ? "Paid" : "Partially paid", nextDueDate }
+        : item),
+    });
+    return null;
   };
   const upsertCoach = (coach: Coach) => persist({ ...data, coaches: data.coaches.some((item) => item.id === coach.id) ? data.coaches.map((item) => item.id === coach.id ? coach : item) : [coach, ...data.coaches] });
   const removeCoach = (id: string) => persist({ ...data, coaches: data.coaches.filter((item) => item.id !== id) });
@@ -238,6 +376,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
       next.walkIns = data.walkIns.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
       next.visits = data.visits.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
       next.memberships = data.memberships.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.paymentMethods = data.paymentMethods.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
       next.payments = data.payments.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
       next.coaches = data.coaches.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
       next.keyfobs = data.keyfobs.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
@@ -295,7 +434,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     });
     if (additions.length) { const next = { ...data, reminderRecords: [...additions, ...data.reminderRecords] }; setData(next); localStorage.setItem(storageKey, JSON.stringify(next)); }
   }, [data.memberships, data.customers, data.reminderSettings, data.reminderRecords]);
-  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data]);
+  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, pauseMembershipBilling, resumeMembershipBilling, removeMembership, addMembershipPlan, updateMembershipPolicySettings, upsertPaymentMethod, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

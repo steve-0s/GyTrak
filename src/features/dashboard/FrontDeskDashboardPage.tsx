@@ -3,6 +3,7 @@ import { ArrowUpRight, CalendarDays, CheckCircle2, Plus } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import { useGymData } from "../../contexts/GymDataContext";
+import { isCollectedPayment } from "../../lib/financial";
 import {
   addDateDays,
   businessDateKey,
@@ -46,7 +47,7 @@ export default function FrontDeskDashboardPage({
   const todayVisits = branchVisits.filter((record) => dashboardDateKey(record.date) === today && record.status !== "Voided");
   const todayWalkIns = branchWalkIns.filter((visit) => dashboardDateKey(visit.date) === today);
   const todayPayments = branchPayments.filter((payment) =>
-    dashboardDateKey(payment.date) === today && (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount",
+    dashboardDateKey(payment.date) === today && isCollectedPayment(payment),
   );
   const membershipRevenue = todayPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const walkInRevenueWithoutPaymentRecord = todayWalkIns.filter((visit) => visit.payment === "Paid" &&

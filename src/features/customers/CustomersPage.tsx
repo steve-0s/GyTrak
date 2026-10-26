@@ -16,6 +16,7 @@ import FilterSelect from "../../components/shared/FilterSelect";
 import CustomerCombobox from "../../components/shared/CustomerCombobox";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
+import { toast } from "../../components/shared/toast";
 import type { VisitRecord } from "../../types";
 
 export type Customer = {
@@ -206,7 +207,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
           </div>
         ))}
       </div>
-      {pendingRegistrations.length > 0 && <section className="mb-5 rounded-xl border border-amber-200 bg-amber-50/50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Pending QR registrations</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Review submissions here before they become customer profiles.</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{pendingRegistrations.length} pending</span></div><div className="mt-3 space-y-2">{pendingRegistrations.map((submission) => { const matches = customers.filter((customer) => submission.possibleCustomerIds.includes(customer.id)); return <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-[var(--surface)] p-3 text-xs"><div><p className="font-semibold">{submission.name} <span className="font-normal text-[var(--text-muted)]">· {submission.branch}</span></p><p className="mt-1 text-[var(--text-muted)]">{submission.phone} · {submission.email || "No email"}{matches.length ? ` · Possible match: ${matches.map((item) => item.name).join(", ")}` : ""}</p></div><div className="flex gap-2"><button onClick={() => { const error = reviewRegistration(submission.id, "approve", isAdmin ? "Admin" : "Front Desk", matches.length === 1 ? matches[0].id : undefined); if (!error) onAction("QR registration approved"); }} className="rounded-lg bg-[var(--accent)] px-3 py-2 font-semibold text-[var(--on-accent)]">{matches.length === 1 ? "Link and approve" : "Approve"}</button><button onClick={() => { reviewRegistration(submission.id, "correction", isAdmin ? "Admin" : "Front Desk", undefined, "Please confirm your details with the front desk."); onAction("QR registration returned for correction"); }} className="rounded-lg border border-[var(--border)] px-3 py-2 font-semibold">Correction</button><button onClick={() => { reviewRegistration(submission.id, "reject", isAdmin ? "Admin" : "Front Desk"); onAction("QR registration rejected"); }} className="rounded-lg border border-red-200 px-3 py-2 font-semibold text-red-700">Reject</button></div></div>; })}</div></section>}
+      {pendingRegistrations.length > 0 && <section className="mb-5 rounded-xl border border-amber-200 bg-amber-50/50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Pending QR registrations</h3><p className="mt-1 text-xs text-[var(--text-muted)]">Review submissions here before they become customer profiles.</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{pendingRegistrations.length} pending</span></div><div className="mt-3 space-y-2">{pendingRegistrations.map((submission) => { const matches = customers.filter((customer) => submission.possibleCustomerIds.includes(customer.id)); return <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-[var(--surface)] p-3 text-xs"><div><p className="font-semibold">{submission.name} <span className="font-normal text-[var(--text-muted)]">· {submission.branch}</span></p><p className="mt-1 text-[var(--text-muted)]">{submission.phone} · {submission.email || "No email"}{matches.length ? ` · Possible match: ${matches.map((item) => item.name).join(", ")}` : ""}</p></div><div className="flex gap-2"><button onClick={() => { const error = reviewRegistration(submission.id, "approve", isAdmin ? "Admin" : "Front Desk", matches.length === 1 ? matches[0].id : undefined); if (!error) onAction("QR registration approved"); else toast.error(error); }} className="rounded-lg bg-[var(--accent)] px-3 py-2 font-semibold text-[var(--on-accent)]">{matches.length === 1 ? "Link and approve" : "Approve"}</button><button onClick={() => { reviewRegistration(submission.id, "correction", isAdmin ? "Admin" : "Front Desk", undefined, "Please confirm your details with the front desk."); onAction("QR registration returned for correction"); }} className="rounded-lg border border-[var(--border)] px-3 py-2 font-semibold">Correction</button><button onClick={() => { reviewRegistration(submission.id, "reject", isAdmin ? "Admin" : "Front Desk"); onAction("QR registration rejected"); }} className="rounded-lg border border-red-200 px-3 py-2 font-semibold text-red-700">Reject</button></div></div>; })}</div></section>}
       <section className="data-table-section">
         <div className="data-table-toolbar flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
@@ -861,16 +862,20 @@ export function CustomerForm({
     },
   );
   const [error, setError] = useState("");
+  const showValidationError = (message: string) => {
+    setError(message);
+    toast.warning(message);
+  };
   const update = (key: keyof Customer, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
   const submit = () => {
     if (!form.name.trim() || !form.phone.trim())
-      return setError("Full name and phone number are required.");
+      return showValidationError("Full name and phone number are required.");
     const duplicate = customers.find(
       (item) => item.phone === form.phone && item.id !== form.id,
     );
     if (duplicate)
-      return setError(
+      return showValidationError(
         `Possible duplicate detected: this phone number is already used by ${duplicate.name}. Review the existing profile before continuing.`,
       );
     onSave({
@@ -881,10 +886,10 @@ export function CustomerForm({
   };
   const handlePhoto = async (file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return setError("Choose a JPG, PNG, or WebP image.");
-    if (file.size > 5 * 1024 * 1024) return setError("Photo must be 5 MB or smaller.");
+    if (!file.type.startsWith("image/")) return showValidationError("Choose a JPG, PNG, or WebP image.");
+    if (file.size > 5 * 1024 * 1024) return showValidationError("Photo must be 5 MB or smaller.");
     try { setError(""); const photo = await resizePhoto(file); setForm((current) => ({ ...current, photo })); }
-    catch { setError("The selected photo could not be processed. Try another image."); }
+    catch { setError("The selected photo could not be processed. Try another image."); toast.error("The selected photo could not be processed. Try another image."); }
   };
   return (
     <div className="mx-auto max-w-3xl">

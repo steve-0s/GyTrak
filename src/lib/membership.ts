@@ -1,7 +1,18 @@
-const currentDate = new Date(2026, 9, 20);
+function currentBusinessDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  return new Date(part("year"), part("month") - 1, part("day"));
+}
 
 export function parseMembershipDate(value: string) {
-  const parsed = new Date(`${value} 00:00:00`);
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00`)
+    : new Date(`${value} 00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -31,7 +42,7 @@ export function durationToMonths(duration: string) {
 export function membershipDueState(dueDate: string) {
   const due = parseMembershipDate(dueDate);
   if (!due) return { key: "upcoming" as const, label: "Due date unavailable", daysUntilDue: null };
-  const daysUntilDue = Math.round((due.getTime() - currentDate.getTime()) / 86400000);
+  const daysUntilDue = Math.round((due.getTime() - currentBusinessDate().getTime()) / 86400000);
   if (daysUntilDue < 0) return { key: "overdue" as const, label: "Payment overdue", daysUntilDue };
   if (daysUntilDue === 0) return { key: "today" as const, label: "Payment due today", daysUntilDue };
   if (daysUntilDue <= 7) return { key: "soon" as const, label: `Due in ${daysUntilDue} days`, daysUntilDue };

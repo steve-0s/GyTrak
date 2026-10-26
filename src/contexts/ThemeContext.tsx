@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -18,6 +19,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(nextTheme);
     localStorage.setItem("gytrak-theme", nextTheme);
   };
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
   const value = useMemo(() => ({ theme, setTheme }), [theme]);
   return (
     <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

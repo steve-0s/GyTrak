@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { useGymData } from "../../contexts/GymDataContext";
+import { isCollectedPayment } from "../../lib/financial";
 import {
   businessDateKey,
   chartBucket,
@@ -56,9 +57,7 @@ export default function AdminDashboardPage({ onAction, onOpenMembership }: Props
     const paymentBranch = payment.branch || membershipById.get(payment.membershipId)?.branch;
     return paymentBranch ? branchNames.has(paymentBranch) : false;
   });
-  const collectedPayments = scopedPayments.filter((payment) =>
-    (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount",
-  );
+  const collectedPayments = scopedPayments.filter(isCollectedPayment);
   const rangePayments = collectedPayments.filter((payment) => dateInWindow(payment.date, start, today));
   const monthStart = `${today.slice(0, 7)}-01`;
   const monthCollectedPayments = collectedPayments.filter((payment) => dateInWindow(payment.date, monthStart, today));

@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarCheck,
   ChartNoAxesCombined,
-  Check,
   ChevronDown,
   CreditCard,
   Dumbbell,
@@ -59,6 +58,7 @@ import PageContainer from "../shared/layouts/PageContainer";
 import Sidebar from "../shared/components/Sidebar";
 import Header from "../shared/components/Header";
 import { activePageFromPath, canAccessPage, getNavigationGroups, pagePaths, publicRoutes } from "./routes";
+import { toast } from "../components/shared/toast";
 
 const icons = {
   LayoutDashboard,
@@ -83,7 +83,6 @@ function App() {
   const [active, setActive] = useState(() => activePageFromPath(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
-  const [notice, setNotice] = useState("");
   const [now, setNow] = useState(() => new Date());
   const [headerVisible, setHeaderVisible] = useState(true);
   const [customerCreateSignal, setCustomerCreateSignal] = useState(0);
@@ -95,10 +94,6 @@ function App() {
   const drawerWasOpen = useRef(false);
   const navGroups = getNavigationGroups(role, account?.branch);
   const currentPage = canAccessPage(active, role, account?.branch) ? active : "Dashboard";
-  const showNotice = (message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2800);
-  };
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
@@ -206,7 +201,15 @@ function App() {
     if (message === "Sync queue opened") selectPage("Scanner and Sync Status");
     const destination = destinations.find(([trigger]) => message === trigger)?.[1];
     if (destination) selectPage(destination);
-    showNotice(message);
+    if (/\b(failed|unable|could not|error)\b/i.test(message)) {
+      toast.error(message);
+    } else if (/\b(required|invalid|must be|unavailable)\b/i.test(message)) {
+      toast.warning(message);
+    } else if (/\b(saved|created|updated|recorded|assigned|converted|unarchived|archived|deleted|deactivated|activated|approved|rejected|corrected|voided|exported|registered)\b/i.test(message)) {
+      toast.success(message);
+    } else {
+      toast.info(message);
+    }
   };
   useEffect(() => {
     const onPopState = () => setActive(activePageFromPath(window.location.pathname));
@@ -293,12 +296,6 @@ function App() {
         </PageContainer>
         </main>
       </div>
-      {notice && (
-        <div className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-lg bg-[var(--text)] px-4 py-3 text-sm text-[var(--surface)] shadow-xl">
-          <Check size={16} className="text-emerald-400" />
-          {notice}
-        </div>
-      )}
     </RoleLayout>
   );
 }

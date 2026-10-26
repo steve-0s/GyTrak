@@ -1,4 +1,4 @@
-import type { MembershipPlan, ServicePrice } from "../types";
+import type { MembershipPlan, PaymentMethod, ServicePrice } from "../types";
 
 export const gymPricing = {
   walkIn: { regular: 100, student: 80 },
@@ -25,6 +25,15 @@ export const defaultServicePrices: ServicePrice[] = [
   { id: "SR-WALKIN", name: "Non-member walk-in", category: "Walk-in access", amount: gymPricing.walkIn.regular, studentAmount: gymPricing.walkIn.student, active: true },
   { id: "SR-WALKIN-COACH", name: "Walk-in with coach (1 hour)", category: "Coaching", amount: gymPricing.walkInWithCoach.regular, studentAmount: gymPricing.walkInWithCoach.student, active: true },
   { id: "SR-MEMBER-WALKIN", name: "Existing member walk-in", category: "Walk-in access", amount: 0, studentAmount: 0, active: true },
+];
+
+export const defaultPaymentMethods: PaymentMethod[] = [
+  { id: "PM-CASH", code: "cash", name: "Cash", active: true },
+  { id: "PM-GCASH", code: "gcash", name: "GCash", active: true },
+  { id: "PM-MAYA", code: "maya", name: "Maya", active: true },
+  { id: "PM-BANK", code: "bank-transfer", name: "Bank Transfer", active: true },
+  { id: "PM-CARD", code: "card", name: "Credit/Debit Card", active: true },
+  { id: "PM-OTHER", code: "other", name: "Other", active: true },
 ];
 
 export function priceForCustomer(price: { amount: number; studentAmount?: number }, classification?: string) {
