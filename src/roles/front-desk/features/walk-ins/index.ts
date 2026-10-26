@@ -1,1 +1,1 @@
-export { default as WalkInsScreen } from "../../../../features/walk-ins/WalkInsMembershipsPage";
+export { default as WalkInsScreen } from "../../../../features/walk-ins+membership/WalkInsMembershipsPage";
