@@ -44,13 +44,17 @@ const statusClasses: Record<Customer["status"], string> = {
 };
 
 export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0, openCustomerId }: Props) {
-  const { customers, registrations, visits, upsertCustomer, updateCustomer, reviewRegistration } = useGymData();
+  const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, reviewRegistration } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState(
     isAdmin ? "All branches" : assignedBranch,
   );
+  const activeBranches = branches.filter((item) => item.status === "Active");
+  const createBranch = activeBranches.find((item) => item.name === branch)?.name
+    ?? (branch === "All branches" ? activeBranches[0]?.name : undefined)
+    ?? (!isAdmin ? activeBranches.find((item) => item.name === assignedBranch)?.name : undefined);
   const [type, setType] = useState("All types");
   const [status, setStatus] = useState("All statuses");
   const [page, setPage] = useState(1);
@@ -70,9 +74,9 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
   const selected = customers.find((customer) => customer.id === selectedId);
   const pendingRegistrations = registrations.filter((item) => ["Pending", "Needs correction"].includes(item.status) && (isAdmin || item.branch === assignedBranch));
   useEffect(() => {
-    if (!openCreateSignal) return;
-    setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: branch === "All branches" ? assignedBranch : branch, registered: "Today", lastVisit: "—", classification: "Regular" });
-  }, [openCreateSignal]);
+    if (!openCreateSignal || !createBranch) return;
+    setEditing({ id: "", name: "", phone: "", email: "", type: "Walk-in", status: "None", branch: createBranch, registered: "Today", lastVisit: "—", classification: "Regular" });
+  }, [openCreateSignal, createBranch]);
   useEffect(() => {
     if (!openCustomerId) return;
     const target = customers.find((customer) => customer.id === openCustomerId);
@@ -86,7 +90,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
         <CustomerForm
         customer={editing.id ? editing : undefined}
         customers={customers}
-        branch={branch === "All branches" ? assignedBranch : branch}
+        branch={editing.id ? editing.branch : createBranch ?? ""}
         onCancel={() => setEditing(null)}
         onSave={(customer) => {
           upsertCustomer(customer);
@@ -102,6 +106,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
       <CustomerDetails
         customer={selected}
         visits={visits}
+        canConvert={activeBranches.some((item) => item.name === selected.branch)}
         onBack={() => setSelectedId(null)}
         onEdit={() => setEditing(selected)}
         onChangeType={() => {
@@ -158,6 +163,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
             Export
           </button>
           <button
+            disabled={!createBranch}
             onClick={() =>
               setEditing({
                 id: "",
@@ -166,12 +172,12 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                 email: "",
                 type: "Walk-in",
                 status: "None",
-                branch: branch === "All branches" ? assignedBranch : branch,
+                branch: createBranch ?? "",
                 registered: "Today",
                 lastVisit: "—",
               })
             }
-            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={16} /> Add customer
           </button>
@@ -224,9 +230,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                 onChange={setBranch}
                 options={[
                   "All branches",
-                  "Makati Central",
-                  "BGC High Street",
-                  "Cebu IT Park",
+                  ...activeBranches.map((item) => item.name),
                 ]}
               />
             )}
@@ -383,6 +387,7 @@ function Filter({
 function CustomerDetails({
   customer,
   visits: allVisits,
+  canConvert,
   onBack,
   onEdit,
   onConvert,
@@ -391,6 +396,7 @@ function CustomerDetails({
 }: {
   customer: Customer;
   visits: VisitRecord[];
+  canConvert: boolean;
   onBack: () => void;
   onEdit: () => void;
   onConvert: () => void;
@@ -430,10 +436,13 @@ function CustomerDetails({
             <Edit3 size={15} /> Edit profile
           </button>
           <button
+            disabled={customer.type === "Walk-in" && !canConvert}
             onClick={customer.type === "Walk-in" ? onConvert : onChangeType}
-            className="rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]"
+            className="rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {customer.type === "Walk-in"
+            {customer.type === "Walk-in" && !canConvert
+              ? "Branch unavailable for new memberships"
+              : customer.type === "Walk-in"
               ? "Convert to member"
               : "Change to walk-in"}
           </button>

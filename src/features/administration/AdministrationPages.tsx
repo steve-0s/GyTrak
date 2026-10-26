@@ -1,27 +1,23 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  Archive,
   Check,
-  Edit3,
+  Eye,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 import { formatPHP as php } from "../../lib/utils";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
 import { nextMockId } from "../../services/mockApi";
+import type { BranchRecord } from "../../types";
 
-type Branch = {
-  name: string;
-  location: string;
-  status: "Active" | "Inactive";
-  customers: number;
-  memberships: number;
-  visits: number;
-  revenue: number;
-  frontDesk: number;
-};
+type Branch = BranchRecord;
 type Account = {
   id?: string;
   name: string;
@@ -48,6 +44,8 @@ type Props = {
 const badge = (value: string) =>
   value === "Active"
     ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
+    : value === "Archived"
+      ? "bg-amber-50 text-amber-700"
     : "bg-[var(--bg)] text-[var(--text-muted)]";
 
 export default function AdministrationPages({
@@ -55,11 +53,13 @@ export default function AdministrationPages({
   initialView = "branches",
 }: Props) {
   const [view, setView] = useState(initialView);
-  const { branches: sharedBranches, frontDeskAccounts: sharedAccounts, auditLogs, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount } = useGymData();
+  const { branches: sharedBranches, frontDeskAccounts: sharedAccounts, auditLogs, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount } = useGymData();
   const branches = sharedBranches;
   const accounts = sharedAccounts;
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [branchAction, setBranchAction] = useState<{ branch: Branch; action: "archive" | "delete" } | null>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [query, setQuery] = useState("");
   if (selectedBranch)
@@ -74,6 +74,7 @@ export default function AdministrationPages({
     return (
       <Modal label={editingAccount.email ? "Edit Front Desk account" : "Create Front Desk account"} onClose={() => setEditingAccount(null)} wide>
         <AccountForm
+        branches={branches}
         account={editingAccount.email ? editingAccount : undefined}
         onBack={() => setEditingAccount(null)}
         onSave={(account) => {
@@ -112,6 +113,7 @@ export default function AdministrationPages({
           <button
             onClick={() =>
               setEditingBranch({
+                id: "",
                 name: "",
                 location: "",
                 status: "Active",
@@ -133,7 +135,7 @@ export default function AdministrationPages({
               setEditingAccount({
                 name: "",
                 email: "",
-                branch: "Makati Central",
+                branch: branches.find((item) => item.status === "Active")?.name ?? "",
                 status: "Active",
                 created: "Today",
                 activity: "Not yet active",
@@ -153,9 +155,6 @@ export default function AdministrationPages({
         <Tab active={view === "accounts"} onClick={() => setView("accounts")}>
           Front Desk Accounts
         </Tab>
-        <Tab active={view === "audit"} onClick={() => setView("audit")}>
-          Audit Logs
-        </Tab>
       </div>
       {view === "branches" && (
         <BranchList
@@ -164,6 +163,12 @@ export default function AdministrationPages({
           setQuery={setQuery}
           onSelect={setSelectedBranch}
           onEdit={setEditingBranch}
+          onArchive={(branch) => setBranchAction({ branch, action: "archive" })}
+          onUnarchive={(branch) => {
+            upsertBranch({ ...branch, status: "Active" });
+            onAction(`${branch.name} unarchived`);
+          }}
+          onDelete={(branch) => { setDeleteError(""); setBranchAction({ branch, action: "delete" }); }}
         />
       )}
       {view === "accounts" && (
@@ -189,12 +194,54 @@ export default function AdministrationPages({
             branch={editingBranch.name ? editingBranch : undefined}
             onBack={() => setEditingBranch(null)}
             onSave={(branch) => {
-              const existing = branches.find((item) => item.name === editingBranch.name);
+              const existing = branches.find((item) => item.id === editingBranch.id);
               upsertBranch({ ...branch, id: existing?.id ?? nextMockId("BR", 5) });
               setEditingBranch(null);
               onAction("Branch saved");
             }}
           />
+        </Modal>
+      )}
+      {branchAction && (
+        <Modal label={branchAction.action === "archive" ? "Archive branch" : "Delete branch"} onClose={() => { setBranchAction(null); setDeleteError(""); }}>
+          <h3 className="text-lg font-semibold">{branchAction.action === "archive" ? "Archive branch?" : "Delete branch?"}</h3>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            {branchAction.action === "archive"
+              ? `${branchAction.branch.name} will be marked Archived and removed from new operational choices. Its branch information and history will be preserved.`
+              : `Permanently delete ${branchAction.branch.name}? This is allowed only when the branch has no associated records.`}
+          </p>
+          {branchAction.action === "delete" && getBranchDeleteBlockers(branchAction.branch.id).length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">Deletion unavailable: this branch has associated records.</p>
+              <p className="mt-1">{getBranchDeleteBlockers(branchAction.branch.id).join(", ")}.</p>
+              <p className="mt-1">Archive the branch to preserve its history.</p>
+            </div>
+          )}
+          {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
+          <div className="mt-6 flex justify-end gap-2">
+            <button onClick={() => { setBranchAction(null); setDeleteError(""); }} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm">Cancel</button>
+            <button
+              disabled={branchAction.action === "delete" && getBranchDeleteBlockers(branchAction.branch.id).length > 0}
+              onClick={() => {
+                if (branchAction.action === "archive") {
+                  const archived = { ...branchAction.branch, status: "Archived" as const };
+                  upsertBranch(archived);
+                  onAction(`${branchAction.branch.name} archived`);
+                  setBranchAction(null);
+                } else {
+                  const error = deleteBranch(branchAction.branch.id);
+                  if (error) setDeleteError(error);
+                  else {
+                    onAction(`${branchAction.branch.name} deleted`);
+                    setBranchAction(null);
+                  }
+                }
+              }}
+              className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {branchAction.action === "archive" ? "Archive branch" : "Delete branch"}
+            </button>
+          </div>
         </Modal>
       )}
     </div>
@@ -207,14 +254,20 @@ function BranchList({
   setQuery,
   onSelect,
   onEdit,
+  onArchive,
+  onUnarchive,
+  onDelete,
 }: {
   branches: Branch[];
   query: string;
   setQuery: (value: string) => void;
   onSelect: (branch: Branch) => void;
   onEdit: (branch: Branch) => void;
+  onArchive: (branch: Branch) => void;
+  onUnarchive: (branch: Branch) => void;
+  onDelete: (branch: Branch) => void;
 }) {
-  const [status, setStatus] = useState("All statuses");
+  const [status, setStatus] = useState("Active");
   const rows = branches.filter(
     (branch) =>
       branch.name.toLowerCase().includes(query.toLowerCase()) &&
@@ -230,11 +283,11 @@ function BranchList({
             branches.filter((row) => row.status === "Active").length,
           ],
           [
-            "Inactive branches",
-            branches.filter((row) => row.status === "Inactive").length,
+            "Archived branches",
+            branches.filter((row) => row.status === "Archived").length,
           ],
           [
-            "Requiring attention",
+            "Inactive branches",
             branches.filter((row) => row.status === "Inactive").length,
           ],
         ].map(([label, value]) => (
@@ -261,7 +314,7 @@ function BranchList({
           <Select
             value={status}
             onChange={setStatus}
-            options={["All statuses", "Active", "Inactive"]}
+            options={["Active", "Archived", "Inactive", "All statuses"]}
           />
         </div>
         <div className="overflow-x-auto">
@@ -286,7 +339,7 @@ function BranchList({
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
               {rows.map((branch) => (
-                <tr key={branch.name} tabIndex={0} onClick={() => onSelect(branch)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(branch); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
+                <tr key={branch.id} tabIndex={0} onClick={() => onSelect(branch)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(branch); } }} className="cursor-pointer hover:bg-[var(--bg)] focus:bg-[var(--bg)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--accent)]">
                   <td className="px-5 py-4">
                     <button
                       onClick={(event) => { event.stopPropagation(); onSelect(branch); }}
@@ -310,15 +363,23 @@ function BranchList({
                   <td className="px-5 py-4">{branch.visits}</td>
                   <td className="px-5 py-4">{php(branch.revenue)}</td>
                   <td className="px-5 py-4 text-right" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      onClick={() => onEdit(branch)}
-                      className="font-semibold text-[var(--accent)]"
-                    >
-                      Edit
-                    </button>
+                    <details className="relative inline-block text-left">
+                      <summary aria-label={`Actions for ${branch.name}`} className="flex cursor-pointer list-none items-center rounded-lg border border-[var(--border)] p-2 text-[var(--text-muted)] hover:bg-[var(--bg)] [&::-webkit-details-marker]:hidden">
+                        <MoreHorizontal size={16} />
+                      </summary>
+                      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 text-left shadow-lg">
+                        <BranchActionButton icon={<Eye size={14} />} label="View" onClick={() => onSelect(branch)} />
+                        <BranchActionButton icon={<Pencil size={14} />} label="Edit" onClick={() => onEdit(branch)} />
+                        {branch.status === "Archived"
+                          ? <BranchActionButton icon={<Archive size={14} />} label="Unarchive" onClick={() => onUnarchive(branch)} />
+                          : <BranchActionButton icon={<Archive size={14} />} label="Archive" onClick={() => onArchive(branch)} />}
+                        <BranchActionButton icon={<Trash2 size={14} />} label="Delete" onClick={() => onDelete(branch)} danger />
+                      </div>
+                    </details>
                   </td>
                 </tr>
               ))}
+              {rows.length === 0 && <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">{status === "Archived" ? "No archived branches." : status === "Active" ? "No active branches." : "No branches match your filters."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -352,11 +413,7 @@ function BranchDetails({
             {branch.location}
           </p>
         </div>
-        <span
-          className={`h-fit rounded-full px-2.5 py-1 text-xs font-medium ${badge(branch.status)}`}
-        >
-          {branch.status}
-        </span>
+        <span className={`h-fit rounded-full px-2.5 py-1 text-xs font-medium ${badge(branch.status)}`}>{branch.status}</span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -470,11 +527,13 @@ function BranchForm({
         />
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium">Status</span>
-          <Select
-            value={status}
-            onChange={(value) => setStatus(value as Branch["status"])}
-            options={["Active", "Inactive"]}
-          />
+          {status === "Archived"
+            ? <p className="rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm text-[var(--text-muted)]">Archived · use Unarchive to restore this branch.</p>
+            : <Select
+                value={status}
+                onChange={(value) => setStatus(value as Branch["status"])}
+                options={["Active", "Inactive"]}
+              />}
         </label>
       </div>
       {error && <p className="mt-4 text-xs text-red-600">{error}</p>}
@@ -483,6 +542,7 @@ function BranchForm({
           if (!name.trim() || !location.trim())
             return setError("Branch name and location are required.");
           onSave({
+            id: branch?.id ?? "",
             name,
             location,
             status,
@@ -715,10 +775,12 @@ function AuditList({
 }
 
 function AccountForm({
+  branches,
   account,
   onBack,
   onSave,
 }: {
+  branches: Branch[];
   account?: Account;
   onBack: () => void;
   onSave: (account: Account) => void;
@@ -756,12 +818,10 @@ function AccountForm({
           <Select
             value={branch}
             onChange={setBranch}
-            options={[
-              "Makati Central",
-              "BGC High Street",
-              "Cebu IT Park",
-              "Quezon Avenue",
-            ]}
+            options={Array.from(new Set([
+              ...branches.filter((item) => item.status === "Active").map((item) => item.name),
+              ...(account ? [account.branch] : []),
+            ]))}
           />
         </label>
         <label>
@@ -891,6 +951,31 @@ function Select({
   options: string[];
 }) {
   return <FilterSelect value={value} options={options} onChange={onChange} />;
+}
+function BranchActionButton({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.currentTarget.closest("details")?.removeAttribute("open");
+        onClick();
+      }}
+      className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--bg)] ${danger ? "text-red-600" : ""}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 }
 function Tab({
   active,

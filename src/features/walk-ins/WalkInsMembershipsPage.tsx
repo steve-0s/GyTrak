@@ -16,7 +16,7 @@ import { nextMockId, nowLabel } from "../../services/mockApi";
 import { useGymData } from "../../contexts/GymDataContext";
 import type { Membership as SharedMembership, MembershipPlan as SharedMembershipPlan, PaymentRecord, ServicePrice, VisitRecord } from "../../types";
 import { CustomerForm, type Customer } from "../customers/CustomersPage";
-import { priceForCustomer, membershipPrice } from "../../lib/pricing";
+import { planPricingSummary, priceForCustomer, membershipPrice } from "../../lib/pricing";
 import AttendancePage from "../attendance/AttendancePage";
 
 type WalkIn = {
@@ -81,6 +81,11 @@ export default function WalkInsMembershipsPage({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All statuses");
   const [scopedBranch, setScopedBranch] = useState(isAdmin ? "All branches" : assignedBranch);
+  const activeBranches = branches.filter((item) => item.status === "Active");
+  const activeBranchNames = activeBranches.map((item) => item.name);
+  const operationBranch = isAdmin
+    ? activeBranches.find((item) => item.name === scopedBranch)?.name ?? activeBranches[0]?.name
+    : activeBranches.find((item) => item.name === assignedBranch)?.name;
   const closeWalkInFlow = () => {
     setWalkInForm(false);
     setWalkInCustomerForm(false);
@@ -205,6 +210,7 @@ export default function WalkInsMembershipsPage({
             </button>
           )}
           <button
+            disabled={!operationBranch}
             onClick={() =>
               view === "overview"
                 ? setManualAttendanceForm(true)
@@ -212,7 +218,7 @@ export default function WalkInsMembershipsPage({
                   ? setMembershipForm(true)
                   : setWalkInForm(true)
             }
-            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)]"
+            className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={16} />{" "}
             {view === "overview"
@@ -231,7 +237,7 @@ export default function WalkInsMembershipsPage({
           memberships={scopedMemberships}
           payments={payments}
           branch={isAdmin ? scopedBranch : undefined}
-          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          branches={isAdmin ? activeBranchNames : undefined}
           onBranchChange={isAdmin ? setScopedBranch : undefined}
           onSelectVisit={(visit) => { setInitialAttendanceVisitId(visit.id); setView("attendance"); }}
         />
@@ -245,7 +251,7 @@ export default function WalkInsMembershipsPage({
           status={status}
           setStatus={setStatus}
           branch={isAdmin ? scopedBranch : undefined}
-          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          branches={isAdmin ? activeBranchNames : undefined}
           onBranchChange={isAdmin ? setScopedBranch : undefined}
           onSelect={setSelectedWalkIn}
           onDelete={(row) => {
@@ -264,7 +270,7 @@ export default function WalkInsMembershipsPage({
           status={status}
           setStatus={setStatus}
           branch={isAdmin ? scopedBranch : undefined}
-          branches={isAdmin ? branches.map((item) => item.name) : undefined}
+          branches={isAdmin ? activeBranchNames : undefined}
           onBranchChange={isAdmin ? setScopedBranch : undefined}
           onSelect={setSelectedMembership}
           onDelete={(row) => {
@@ -300,7 +306,7 @@ export default function WalkInsMembershipsPage({
             customers={customers}
             createdCustomer={createdWalkInCustomer}
             servicePrices={servicePrices}
-            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            branch={operationBranch ?? ""}
             onBack={closeWalkInFlow}
             onNewProfile={() => setWalkInCustomerForm(true)}
             onSave={(visit) => {
@@ -315,7 +321,7 @@ export default function WalkInsMembershipsPage({
         <Modal label="Add new customer" onClose={() => setWalkInCustomerForm(false)} wide>
           <CustomerForm
             customers={customers}
-            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            branch={operationBranch ?? ""}
             onCancel={() => setWalkInCustomerForm(false)}
             onSave={(customer) => {
               upsertCustomer(customer);
@@ -331,7 +337,7 @@ export default function WalkInsMembershipsPage({
           <MembershipForm
             customers={customers}
             plans={plans}
-            branch={scopedBranch === "All branches" ? "Makati Central" : scopedBranch}
+            branch={operationBranch ?? ""}
             onBack={() => setMembershipForm(false)}
             onSave={(membership) => {
               createMembership(membership);
@@ -1156,6 +1162,7 @@ function MembershipForm({
           );
           if (!matchedCustomer)
             return setError("Select an existing customer from the customer records.");
+          const summary = selected ? planPricingSummary(selected, matchedCustomer.classification) : { monthly: 0, initiationFee: 0, promoAmount: 0, discountedMonthly: 0, freeIntroMonths: 0, promoLabel: "No promotion" };
           onSave({
             id: nextMockId("MEM", 820),
             customer: matchedCustomer.name,
@@ -1168,6 +1175,14 @@ function MembershipForm({
             paymentMethod: payment === "Paid" ? method : undefined,
             branch,
             price: selectedPrice,
+            monthlyDues: summary.monthly,
+            initiationFee: summary.initiationFee,
+            freeIntroMonths: summary.freeIntroMonths,
+            promoDiscount: summary.promoAmount,
+            promoName: selected.promoName,
+            outstandingBalance: payment === "Paid" ? 0 : selectedPrice,
+            nextDueDate: addBillingMonths(nowLabel(), durationToMonths(selected.duration)),
+            renewalEligible: true,
           });
         }}
         className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--on-accent)]"
@@ -1230,7 +1245,13 @@ function MembershipDetails({
           label="Payment status"
           value={`${membership.payment} · ${php(membership.price)}`}
         />
-        <Info label="Next due date" value={`${membership.end} · ${dueState.label}`} />
+        <Info label="Monthly dues" value={php(membership.monthlyDues ?? membership.price)} />
+        <Info label="Initiation fee" value={php(membership.initiationFee ?? 0)} />
+        <Info label="Promo discount" value={membership.promoDiscount ? `-${php(membership.promoDiscount)}` : "No promotion"} />
+        <Info label="Free intro period" value={membership.freeIntroMonths ? `${membership.freeIntroMonths} months` : "None"} />
+        <Info label="Outstanding balance" value={php(membership.outstandingBalance ?? 0)} />
+        <Info label="Next due date" value={`${membership.nextDueDate ?? membership.end} · ${dueState.label}`} />
+        <Info label="Renewal eligibility" value={membership.renewalEligible ? "Eligible" : "Review required"} />
       </div>
       <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1239,7 +1260,7 @@ function MembershipDetails({
         </div>
         {recording && <div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={amount} onChange={(event) => setAmount(event.target.value)} type="number" min="0" placeholder="Amount" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><select value={method} onChange={(event) => setMethod(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"><option>Cash</option><option>GCash</option><option>Card</option><option>Bank transfer</option></select><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Reference (optional)" className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" /><button onClick={recordPayment} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)] sm:col-span-3">Confirm payment received</button></div>}
       </div>
-      <div id="membership-payment-history" className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Payment history</h3>{payments.length ? <div className="mt-3 space-y-2 text-xs">{payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
+      <div id="membership-payment-history" className="mt-5 rounded-lg border border-[var(--border)] p-4"><h3 className="font-semibold">Billing history</h3>{payments.length ? <div className="mt-3 space-y-2 text-xs">{payments.map((payment) => <div key={payment.id} className="flex flex-wrap justify-between gap-2"><span>{payment.date} · {payment.method}</span><span className="text-[var(--text-muted)]">{php(payment.amount)} · {payment.reference}</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No payment history has been recorded in this prototype.</p>}</div>
       <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--border)] pt-5">
         <button
           onClick={() => onAction("Membership reminders opened")}
@@ -1294,7 +1315,11 @@ function PlansPage({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [duration, setDuration] = useState("1 month");
-  const [price, setPrice] = useState("");
+  const [monthlyDues, setMonthlyDues] = useState("800");
+  const [initiationFee, setInitiationFee] = useState("0");
+  const [promoDiscountPercent, setPromoDiscountPercent] = useState("0");
+  const [promoName, setPromoName] = useState("");
+  const [freeIntroMonths, setFreeIntroMonths] = useState("0");
   return (
     <div>
       <button
@@ -1319,50 +1344,49 @@ function PlansPage({
       </div>
       {adding && (
         <Modal label="Add membership plan" onClose={() => setAdding(false)}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Plan name"
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <select
-            value={duration}
-            onChange={(event) => setDuration(event.target.value)}
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          >
-            <option>1 month</option>
-            <option>3 months</option>
-            <option>12 months</option>
-          </select>
-          <input
-            value={price}
-            onChange={(event) => setPrice(event.target.value)}
-            type="number"
-            min="0"
-            placeholder="Price in PHP"
-            className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
-          />
-          <button
-            onClick={() => {
-              if (name.trim() && Number(price) > 0) {
-                onSave({
-                  name,
-                  duration,
-                  price: Number(price),
-                  active: true,
-                  used: 0,
-                });
-                setAdding(false);
-                setName("");
-                setPrice("");
-              }
-            }}
-            className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]"
-          >
-            Save plan
-          </button>
-        </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Plan name" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <select value={duration} onChange={(event) => setDuration(event.target.value)} className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm"><option>1 month</option><option>3 months</option><option>12 months</option></select>
+            <input value={monthlyDues} onChange={(event) => setMonthlyDues(event.target.value)} type="number" min="0" placeholder="Monthly dues" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <input value={initiationFee} onChange={(event) => setInitiationFee(event.target.value)} type="number" min="0" placeholder="Initiation fee" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <input value={promoName} onChange={(event) => setPromoName(event.target.value)} placeholder="Promo name (optional)" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm sm:col-span-2" />
+            <input value={promoDiscountPercent} onChange={(event) => setPromoDiscountPercent(event.target.value)} type="number" min="0" max="100" placeholder="Promo %" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <input value={freeIntroMonths} onChange={(event) => setFreeIntroMonths(event.target.value)} type="number" min="0" placeholder="Free intro months" className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <div className="sm:col-span-2 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3 text-xs text-[var(--text-muted)]">
+              <p className="font-semibold text-[var(--text)]">Pricing summary</p>
+              <p className="mt-1">Regular monthly dues: {php(Number(monthlyDues || 0))}</p>
+              <p>Promo discount: {Number(promoDiscountPercent || 0)}% {promoName ? `· ${promoName}` : ""}</p>
+              <p>Initial payable: {php(Number(monthlyDues || 0) + Number(initiationFee || 0))}</p>
+            </div>
+            <button
+              onClick={() => {
+                if (name.trim() && Number(monthlyDues) >= 0 && Number(initiationFee) >= 0) {
+                  const sanitized = {
+                    name,
+                    duration,
+                    durationMonths: durationToMonths(duration),
+                    price: Number(monthlyDues),
+                    monthlyDues: Number(monthlyDues),
+                    initiationFee: Number(initiationFee),
+                    active: true,
+                    used: 0,
+                    promoName: promoName.trim() || undefined,
+                    promoDiscountPercent: Number(promoDiscountPercent) || 0,
+                    freeIntroMonths: Number(freeIntroMonths) || 0,
+                  };
+                  onSave(sanitized);
+                  setAdding(false);
+                  setName("");
+                  setMonthlyDues("800");
+                  setInitiationFee("0");
+                  setPromoDiscountPercent("0");
+                  setPromoName("");
+                  setFreeIntroMonths("0");
+                }
+              }}
+              className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)] sm:col-span-2"
+            > Save plan </button>
+          </div>
         </Modal>
       )}
       <div className="grid gap-4 md:grid-cols-3">
@@ -1379,10 +1403,15 @@ function PlansPage({
                 {plan.active ? "Active" : "Inactive"}
               </span>
             </div>
-            <p className="mt-4 text-2xl font-bold">{php(plan.price)}</p>
+            <p className="mt-4 text-2xl font-bold">{php(plan.monthlyDues ?? plan.price)}</p>
             <p className="mt-1 text-xs text-[var(--text-muted)]">
-              {plan.duration}
+              {plan.duration} · {plan.freeIntroMonths ? `${plan.freeIntroMonths} free months` : "No intro offer"}
             </p>
+            <div className="mt-3 space-y-1 text-xs text-[var(--text-muted)]">
+              <div>Regular monthly dues: {php(plan.monthlyDues ?? plan.price)}</div>
+              <div>Initiation fee: {php(plan.initiationFee ?? 0)}</div>
+              <div>{plan.promoName ? `${plan.promoName} (${plan.promoDiscountPercent ?? 0}% off)` : (plan.promoDiscountPercent ? `${plan.promoDiscountPercent}% off` : "No promotion")}</div>
+            </div>
             <div className="mt-5 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
               {plan.used} memberships use this plan
             </div>

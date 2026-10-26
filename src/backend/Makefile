@@ -10,12 +10,12 @@ DB_PORT=5432
 DB_SSLMODE=disable
 
 # Load DATABASE_URL from environment if defined.
-DATABASE_URL ?= postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
+DATABASE_URL ?= postgres://$(DB_USER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
 
 # Migration directory
-MIGRATIONS_PATH=./db/migrations
+MIGRATIONS_PATH=./db/migration
 
-.PHONY: help run build test clean tidy migrate-up migrate-down migrate-create sqlc
+.PHONY: help run build test clean tidy migrate-up migrate-down migrate-create sqlc createdb dropdb
 
 help:
 	@echo "Available commands:"
@@ -51,16 +51,14 @@ dropdb:
 	docker exec -it GyTrak psql -U $(DB_USER) -d postgres -c "DROP DATABASE $(DB_NAME);"
 
 migrate-up:
-	steve-0s@Chiggas-MacBook-Pro backend % migrate -path db/migration -database "postgresql://postgres:myNotSoSecretPass234@localhost:5432/postgres?sslmode=disable" -verbose up
+	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" -verbose up
 
 migrate-down:
-	steve-0s@Chiggas-MacBook-Pro backend % migrate -path db/migration -database "postgresql://postgres:myNotSoSecretPass234@localhost:5432/postgres?sslmode=disable" -verbose down
+	migrate -path $(MIGRATIONS_PATH) -database "$(DATABASE_URL)" -verbose down
 
 migrate-create:
-	@read -p "Migration name: " name; 
+	@read -p "Migration name: " name; \
 	migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $$name
-
-.PHONY: createdb dropdb migrate-up migrate-down
 
 sqlc:
 	sqlc generate

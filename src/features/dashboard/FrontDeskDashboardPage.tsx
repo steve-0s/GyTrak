@@ -26,7 +26,7 @@ type Props = { branch?: string; onAction: (message: string) => void };
 const php = (amount: number) => `₱${amount.toLocaleString("en-PH")}`;
 
 export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { registrations, visits, walkIns, memberships, customers, reminderRecords } = useGymData();
+  const { registrations, visits, walkIns, memberships, customers, reminderRecords, payments } = useGymData();
   const branch = assignedBranch;
   const attendanceRecords = visits.filter((record) => record.branch === branch).map((record) => ({ customer: record.customer, branch: record.branch, in: record.timeIn, out: record.timeOut, type: record.type, source: record.source.startsWith("RFID") ? "RFID" : "Manual", status: record.status }));
   const branchWalkIns = walkIns.filter((visit) => visit.branch === branch);
@@ -46,6 +46,9 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
   const paidRevenue = branchWalkIns
     .filter((visit) => visit.payment === "Paid")
     .reduce((total, visit) => total + visit.fee, 0);
+  const collectedMembershipRevenue = payments
+    .filter((payment) => payment.branch === branch && (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount")
+    .reduce((total, payment) => total + payment.amount, 0);
   const todayWalkIns = branchWalkIns.filter((visit) => visit.date === "Oct 20, 2026");
   const uniqueVisitors = new Set(attendanceRecords.map((record) => record.customer)).size;
   const dueMemberships = memberships.filter((item) => item.branch === branch && membershipDueState(item.end).key !== "upcoming");
@@ -54,8 +57,8 @@ export default function FrontDeskDashboardPage({ branch: assignedBranch = "Makat
     ["Unique visitors", String(uniqueVisitors), "Distinct customers"],
     ["Active members", String(memberships.filter((membership) => membership.status === "Active" && membership.branch === branch).length), "Assigned branch records"],
     ["Walk-ins today", String(todayWalkIns.length), `${php(paidRevenue)} collected`],
+    ["Branch revenue", `${php(collectedMembershipRevenue)}`, "Membership + paid services"],
     ["Payment follow-up", String(dueMemberships.length), "Manual reminders only"],
-    ["Pending actions", String(attendanceRecords.filter((record) => record.status === "Checked in").length), "Open operational records"],
   ];
 
   return (

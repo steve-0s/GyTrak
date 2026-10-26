@@ -1,3 +1,4 @@
+import type { Membership, MembershipPlan } from "../types"
 export type { Role } from "../types"
 import { membershipDueState } from "../lib/membership"
 import { gymPricing } from "../lib/pricing"
@@ -47,12 +48,12 @@ export const visitRecords = [
   { id: "ATT-90196", customerId: "CUS-10311", customer: "Jamie Lim", branch: "Makati Central", date: "Oct 18, 2026", timeIn: "06:20 PM", timeOut: "07:45 PM", type: "Walk-in", source: "Manual", status: "Completed", sync: "Synced", walkInId: "VIS-20798" },
 ] as const
 
-export const memberships = [
-  { id: "MEM-00814", customer: "Maya Santos", customerId: "CUS-10482", plan: "Monthly Membership with Coaching", start: "Oct 12, 2026", end: "Nov 12, 2026", status: "Active", payment: "Paid", branch: "Makati Central", price: gymPricing.monthlyWithCoach.regular },
-  { id: "MEM-00809", customer: "Ava Rivera", customerId: "CUS-10477", plan: "Monthly Membership", start: "Oct 18, 2026", end: "Nov 18, 2026", status: "Active", payment: "Paid", branch: "BGC High Street", price: gymPricing.monthly.student },
-  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Sep 26, 2026", end: "Oct 26, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: gymPricing.monthly.student },
-  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership with Coaching", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Pending", branch: "Cebu IT Park", price: gymPricing.monthlyWithCoach.student },
-] as const
+export const memberships: Membership[] = [
+  { id: "MEM-00814", customer: "Maya Santos", customerId: "CUS-10482", plan: "Monthly Membership with Coaching", start: "Oct 12, 2026", end: "Nov 12, 2026", status: "Active", payment: "Paid", branch: "Makati Central", price: gymPricing.monthlyWithCoach.regular, monthlyDues: gymPricing.monthlyWithCoach.regular, initiationFee: 150, freeIntroMonths: 1, promoDiscount: 180, promoName: "New member launch", outstandingBalance: 0, nextDueDate: "Nov 12, 2026", renewalEligible: true },
+  { id: "MEM-00809", customer: "Ava Rivera", customerId: "CUS-10477", plan: "Monthly Membership", start: "Oct 18, 2026", end: "Nov 18, 2026", status: "Active", payment: "Paid", branch: "BGC High Street", price: gymPricing.monthly.student, monthlyDues: gymPricing.monthly.student, initiationFee: 0, freeIntroMonths: 0, promoDiscount: 0, outstandingBalance: 0, nextDueDate: "Nov 18, 2026", renewalEligible: true },
+  { id: "MEM-00802", customer: "Sofia Kim", customerId: "CUS-10424", plan: "Monthly Membership", start: "Sep 26, 2026", end: "Oct 26, 2026", status: "Pending", payment: "Pending", branch: "BGC High Street", price: gymPricing.monthly.student, monthlyDues: gymPricing.monthly.student, initiationFee: 0, freeIntroMonths: 0, promoDiscount: 0, outstandingBalance: gymPricing.monthly.student, nextDueDate: "Oct 26, 2026", renewalEligible: false },
+  { id: "MEM-00794", customer: "Noah Patel", customerId: "CUS-10441", plan: "Monthly Membership with Coaching", start: "Sep 12, 2026", end: "Oct 12, 2026", status: "Expired", payment: "Pending", branch: "Cebu IT Park", price: gymPricing.monthlyWithCoach.student, monthlyDues: gymPricing.monthlyWithCoach.student, initiationFee: 100, freeIntroMonths: 1, promoDiscount: 156, promoName: "New member launch", outstandingBalance: gymPricing.monthlyWithCoach.student, nextDueDate: "Oct 12, 2026", renewalEligible: true },
+]
 
 export const membershipPayments = [
   { id: "PAY-001", membershipId: "MEM-00814", date: "Oct 12, 2026", amount: gymPricing.monthlyWithCoach.regular, method: "GCash", reference: "GC-101226", category: "Membership", branch: "Makati Central", status: "Paid", serviceName: "Monthly Membership with Coaching" },
@@ -70,10 +71,10 @@ export const membershipDueNotifications = memberships
   }))
   .filter((notification) => notification.key !== "upcoming")
 
-export const membershipPlans = [
-  { name: "Monthly Membership", duration: "1 month", price: gymPricing.monthly.regular, studentPrice: gymPricing.monthly.student, active: true, used: 84 },
-  { name: "Monthly Membership with Coaching", duration: "1 month", price: gymPricing.monthlyWithCoach.regular, studentPrice: gymPricing.monthlyWithCoach.student, active: true, used: 32 },
-] as const
+export const membershipPlans: MembershipPlan[] = [
+  { name: "Monthly Membership", duration: "1 month", durationMonths: 1, price: gymPricing.monthly.regular, monthlyDues: gymPricing.monthly.regular, initiationFee: 0, studentPrice: gymPricing.monthly.student, studentMonthlyDues: gymPricing.monthly.student, studentInitiationFee: 0, active: true, used: 84, freeIntroMonths: 0 },
+  { name: "Monthly Membership with Coaching", duration: "1 month", durationMonths: 1, price: gymPricing.monthlyWithCoach.regular, monthlyDues: gymPricing.monthlyWithCoach.regular, initiationFee: 150, studentPrice: gymPricing.monthlyWithCoach.student, studentMonthlyDues: gymPricing.monthlyWithCoach.student, studentInitiationFee: 100, active: true, used: 32, promoName: "New member launch", promoDiscountPercent: 12, freeIntroMonths: 1 },
+]
 
 export const coaches = [
   { id: "COA-021", name: "Ethan Flores", specialty: "Strength & conditioning", branch: "Makati Central", status: "Active", phone: "+63 917 555 0121" },

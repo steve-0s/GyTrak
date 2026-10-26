@@ -37,6 +37,8 @@ type GymDataContextValue = GymData & {
   assignKeyfob: (id: string, customer: string, branch: string) => void;
   deactivateKeyfob: (id: string) => void;
   upsertBranch: (branch: BranchRecord) => void;
+  getBranchDeleteBlockers: (id: string) => string[];
+  deleteBranch: (id: string) => string | null;
   upsertFrontDeskAccount: (account: FrontDeskAccount) => void;
   toggleFrontDeskAccount: (id: string) => void;
   addAuditLog: (entry: AuditLog) => void;
@@ -52,7 +54,7 @@ function seedData(): GymData {
     walkIns: seedWalkIns.map((item) => ({ ...item })),
     visits: seedVisits.map((item) => ({ ...item })),
     memberships: seedMemberships.map((item) => ({ ...item })),
-    membershipPlans: seedPlans.map((item) => ({ ...item })),
+    membershipPlans: seedPlans.map((item) => ({ ...item, durationMonths: item.durationMonths ?? 1, monthlyDues: item.monthlyDues ?? item.price, initiationFee: item.initiationFee ?? 0, freeIntroMonths: item.freeIntroMonths ?? 0 } as MembershipPlan)),
     servicePrices: defaultServicePrices(),
     payments: seedPayments.map((item) => ({ ...item })),
     coaches: seedCoaches.map((item) => ({ ...item })),
@@ -80,7 +82,7 @@ function readData(): GymData {
       walkIns: mergeSeedRecords(seedWalkIns as WalkIn[], stored.walkIns, (item) => item.id),
       visits: mergeSeedRecords(seedVisits as VisitRecord[], stored.visits, (item) => item.id),
       memberships: mergeSeedRecords(seedMemberships, stored.memberships ?? [], (item) => item.id),
-      membershipPlans: mergeSeedRecords(seedPlans.map((item) => ({ ...item })), stored.membershipPlans ?? [], (item) => item.name),
+      membershipPlans: mergeSeedRecords(seedPlans as MembershipPlan[], stored.membershipPlans ?? [], (item) => item.name),
       servicePrices: stored.servicePrices ?? defaultServicePrices(),
       payments: mergeSeedRecords(seedPayments, stored.payments ?? [], (item) => item.id),
       coaches: mergeSeedRecords(seedCoaches, stored.coaches ?? [], (item) => item.id),
@@ -221,7 +223,57 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   const removeCoach = (id: string) => persist({ ...data, coaches: data.coaches.filter((item) => item.id !== id) });
   const assignKeyfob = (id: string, customer: string, branch: string) => persist({ ...data, keyfobs: data.keyfobs.map((item) => item.id === id ? { ...item, customer, branch, status: "Assigned", date: nowLabel() } : item) });
   const deactivateKeyfob = (id: string) => persist({ ...data, keyfobs: data.keyfobs.map((item) => item.id === id ? { ...item, status: "Deactivated" } : item) });
-  const upsertBranch = (branch: BranchRecord) => persist({ ...data, branches: data.branches.some((item) => item.id === branch.id) ? data.branches.map((item) => item.id === branch.id ? branch : item) : [branch, ...data.branches] });
+  const upsertBranch = (branch: BranchRecord) => {
+    const existing = data.branches.find((item) => item.id === branch.id);
+    const previousName = existing?.name;
+    const next = {
+      ...data,
+      branches: existing
+        ? data.branches.map((item) => item.id === branch.id ? branch : item)
+        : [branch, ...data.branches],
+    };
+    if (previousName && previousName !== branch.name) {
+      next.customers = data.customers.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.registrations = data.registrations.map((item) => item.branchId === branch.id ? { ...item, branch: branch.name } : item);
+      next.walkIns = data.walkIns.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.visits = data.visits.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.memberships = data.memberships.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.payments = data.payments.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.coaches = data.coaches.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.keyfobs = data.keyfobs.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.frontDeskAccounts = data.frontDeskAccounts.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.auditLogs = data.auditLogs.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+      next.reminderRecords = data.reminderRecords.map((item) => item.branch === previousName ? { ...item, branch: branch.name } : item);
+    }
+    persist(next);
+  };
+  const getBranchDeleteBlockers = (id: string) => {
+    const branch = data.branches.find((item) => item.id === id);
+    if (!branch) return ["Branch was not found."];
+    const name = branch.name;
+    const blockers: Array<[string, boolean]> = [
+      ["customers", data.customers.some((item) => item.branch === name)],
+      ["memberships", data.memberships.some((item) => item.branch === name)],
+      ["attendance records", data.visits.some((item) => item.branch === name)],
+      ["walk-in records", data.walkIns.some((item) => item.branch === name)],
+      ["transactions or payments", data.payments.some((item) => item.branch === name) || data.memberships.some((membership) => membership.branch === name && data.payments.some((payment) => payment.membershipId === membership.id))],
+      ["Front Desk accounts", data.frontDeskAccounts.some((item) => item.branch === name)],
+      ["coaches", data.coaches.some((item) => item.branch === name)],
+      ["keyfob records", data.keyfobs.some((item) => item.branch === name)],
+      ["registration records", data.registrations.some((item) => item.branchId === id || item.branch === name)],
+      ["reminder history", data.reminderRecords.some((item) => item.branch === name)],
+      ["audit history", data.auditLogs.some((item) => item.branch === name)],
+    ];
+    return blockers.filter(([, exists]) => exists).map(([label]) => label);
+  };
+  const deleteBranch = (id: string) => {
+    const branch = data.branches.find((item) => item.id === id);
+    if (!branch) return "Branch was not found.";
+    const blockers = getBranchDeleteBlockers(id);
+    if (blockers.length) return `Cannot delete ${branch.name}; it has associated ${blockers.join(", ")}. Archive it to preserve its records.`;
+    persist({ ...data, branches: data.branches.filter((item) => item.id !== id) });
+    return null;
+  };
   const upsertFrontDeskAccount = (account: FrontDeskAccount) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.some((item) => item.id === account.id) ? data.frontDeskAccounts.map((item) => item.id === account.id ? account : item) : [account, ...data.frontDeskAccounts] });
   const toggleFrontDeskAccount = (id: string) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Inactive" : "Active" } : item) });
   const addAuditLog = (entry: AuditLog) => persist({ ...data, auditLogs: [entry, ...data.auditLogs] });
@@ -243,7 +295,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     });
     if (additions.length) { const next = { ...data, reminderRecords: [...additions, ...data.reminderRecords] }; setData(next); localStorage.setItem(storageKey, JSON.stringify(next)); }
   }, [data.memberships, data.customers, data.reminderSettings, data.reminderRecords]);
-  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data]);
+  const value = useMemo(() => ({ ...data, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, createMembership, updateMembership, removeMembership, addMembershipPlan, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

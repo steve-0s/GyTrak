@@ -23,6 +23,8 @@ type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) =>
 export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
   const { branches: branchRecords, customers, visits, walkIns, memberships, payments, coaches, frontDeskAccounts, auditLogs, reminderRecords } = useGymData();
   const branches = ["All branches", ...branchRecords.map((item) => item.name)];
+  const collectedRevenue = payments.filter((payment) => (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount").reduce((sum, payment) => sum + payment.amount, 0);
+  const outstandingBalance = memberships.reduce((sum, membership) => sum + (membership.outstandingBalance ?? 0), 0);
   const [category, setCategory] = useState("Overview");
   const [range, setRange] = useState("Last 7 days");
   const [branch, setBranch] = useState(
@@ -61,7 +63,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
   const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: scopedMemberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
   const planData = Array.from(new Set(scopedMemberships.map((membership) => membership.plan))).map((name) => ({ name, value: scopedMemberships.filter((membership) => membership.plan === name && membership.status === "Active").length }));
   const attendanceTrend = groupByDate(scopedAttendance, (event) => event.date, (items) => items.length);
-  const summary = { visits: scopedAttendance.length, revenue: paidPayments.reduce((sum, payment) => sum + payment.amount, 0), members: scopedMemberships.filter((membership) => membership.status === "Active").length, walkIns: scopedWalkIns.length };
+  const summary = { visits: scopedAttendance.length, revenue: paidPayments.reduce((sum, payment) => sum + payment.amount, 0), members: scopedMemberships.filter((membership) => membership.status === "Active").length, walkIns: scopedWalkIns.length, outstanding: scopedMemberships.reduce((sum, membership) => sum + (membership.outstandingBalance ?? 0), 0) };
   const exportReport = () => {
     const rows =
       category === "Branch performance"
@@ -79,6 +81,7 @@ export default function ReportsPage({ isAdmin, branch: assignedBranch = "Makati 
             ["Metric", "Value"],
             ["Total check-ins", summary.visits],
             ["Collected payments", php(summary.revenue)],
+            ["Outstanding balance", php(summary.outstanding)],
             ["Active memberships", summary.members],
             ["Walk-ins", summary.walkIns],
           ];

@@ -36,7 +36,7 @@ export function canAccessPage(page: string, role: Role, assignedBranch?: string)
 }
 export function getNavigationGroups(role: Role, assignedBranch?: string) {
   const grouped = new Map<string, RouteMeta[]>();
-  appRoutes.filter((route) => route.roles.includes(role) && (role !== "Front Desk" || route.branchScope !== "assigned" || Boolean(assignedBranch))).forEach((route) => grouped.set(route.group, [...(grouped.get(route.group) ?? []), route]));
+  appRoutes.filter((route) => route.label !== "Front Desk Accounts" && route.roles.includes(role) && (role !== "Front Desk" || route.branchScope !== "assigned" || Boolean(assignedBranch))).forEach((route) => grouped.set(route.group, [...(grouped.get(route.group) ?? []), route]));
   return [...grouped.entries()].map(([label, items]) => ({ label, items }));
 }
 

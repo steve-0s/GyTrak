@@ -18,8 +18,91 @@ const generatedCustomers: Customer[] = Array.from({ length: 48 }, (_, index) => 
 });
 
 export const customers: Customer[] = [...seedCustomers, ...generatedCustomers];
-const generatedMemberships: Membership[] = generatedCustomers.filter((customer) => customer.type === "Member").map((customer, index) => ({ id: "MEM-DEMO-" + String(index + 1).padStart(3, "0"), customer: customer.name, customerId: customer.id, plan: customer.plan ?? "Monthly Membership", start: "Sep " + String((index % 20) + 1).padStart(2, "0") + ", 2026", end: customer.endDate ?? "Nov 20, 2026", status: customer.status === "Pending" ? "Pending" : customer.status === "Expired" ? "Expired" : "Active", payment: customer.status === "Pending" || index % 7 === 0 ? "Pending" : "Paid", paymentMethod: index % 2 ? "GCash" : "Cash", branch: customer.branch, price: membershipPrice({ price: customer.plan?.includes("Coaching") ? 1500 : 800, studentPrice: customer.plan?.includes("Coaching") ? 1300 : 600 }, customer.classification) }));
-const additionalMemberships: Membership[] = generatedCustomers.filter((customer) => customer.type === "Member").slice(0, 12).map((customer, index) => { const plan = index % 2 ? "Monthly Membership" : "Monthly Membership with Coaching"; return { id: "MEM-DEMO-" + String(generatedMemberships.length + index + 1).padStart(3, "0"), customer: customer.name, customerId: customer.id, plan, start: "Jun " + String((index % 20) + 1).padStart(2, "0") + ", 2026", end: index % 3 === 0 ? "Oct 24, 2026" : "Dec 20, 2026", status: index % 4 === 0 ? "Expired" : "Active", payment: index % 5 === 0 ? "Pending" : "Paid", paymentMethod: index % 2 ? "Card" : "Cash", branch: branchNames[(index + 1) % branchNames.length], price: membershipPrice({ price: plan.includes("Coaching") ? 1500 : 800, studentPrice: plan.includes("Coaching") ? 1300 : 600 }, customer.classification) }; });
+const generatedMemberships: Membership[] = generatedCustomers.filter((customer) => customer.type === "Member").map((customer, index) => {
+  const isStudent = customer.classification === "Student";
+  const isCoaching = customer.plan?.includes("Coaching") ?? false;
+  const planInfo = {
+    name: customer.plan ?? "Monthly Membership",
+    duration: "1 month",
+    durationMonths: 1,
+    price: isCoaching ? 1500 : 800,
+    monthlyDues: isCoaching ? 1500 : 800,
+    initiationFee: isCoaching ? 150 : 0,
+    studentPrice: isCoaching ? 1300 : 600,
+    studentMonthlyDues: isCoaching ? 1300 : 600,
+    studentInitiationFee: isCoaching ? 100 : 0,
+    active: true,
+    used: 0,
+    promoName: isCoaching ? "New member launch" : undefined,
+    promoDiscountPercent: isCoaching ? 12 : 0,
+    freeIntroMonths: isCoaching ? 1 : 0,
+  };
+  const price = membershipPrice(planInfo, customer.classification);
+  return {
+    id: "MEM-DEMO-" + String(index + 1).padStart(3, "0"),
+    customer: customer.name,
+    customerId: customer.id,
+    plan: customer.plan ?? "Monthly Membership",
+    start: "Sep " + String((index % 20) + 1).padStart(2, "0") + ", 2026",
+    end: customer.endDate ?? "Nov 20, 2026",
+    status: customer.status === "Pending" ? "Pending" : customer.status === "Expired" ? "Expired" : "Active",
+    payment: customer.status === "Pending" || index % 7 === 0 ? "Pending" : "Paid",
+    paymentMethod: index % 2 ? "GCash" : "Cash",
+    branch: customer.branch,
+    price,
+    monthlyDues: isStudent ? (isCoaching ? 1300 : 600) : (isCoaching ? 1500 : 800),
+    initiationFee: isCoaching ? (isStudent ? 100 : 150) : 0,
+    freeIntroMonths: isCoaching ? 1 : 0,
+    promoDiscount: isCoaching ? 12 : 0,
+    promoName: isCoaching ? "New member launch" : undefined,
+    outstandingBalance: customer.status === "Pending" ? price : 0,
+    nextDueDate: "Nov 20, 2026",
+    renewalEligible: true,
+  };
+});
+const additionalMemberships: Membership[] = generatedCustomers.filter((customer) => customer.type === "Member").slice(0, 12).map((customer, index) => {
+  const plan = index % 2 ? "Monthly Membership" : "Monthly Membership with Coaching";
+  const isStudent = customer.classification === "Student";
+  const isCoaching = plan.includes("Coaching");
+  const planInfo = {
+    name: plan,
+    duration: "1 month",
+    durationMonths: 1,
+    price: isCoaching ? 1500 : 800,
+    monthlyDues: isCoaching ? 1500 : 800,
+    initiationFee: isCoaching ? 150 : 0,
+    studentPrice: isCoaching ? 1300 : 600,
+    studentMonthlyDues: isCoaching ? 1300 : 600,
+    studentInitiationFee: isCoaching ? 100 : 0,
+    active: true,
+    used: 0,
+    promoName: isCoaching ? "New member launch" : undefined,
+    promoDiscountPercent: isCoaching ? 12 : 0,
+    freeIntroMonths: isCoaching ? 1 : 0,
+  };
+  const price = membershipPrice(planInfo, customer.classification);
+  return {
+    id: "MEM-DEMO-" + String(generatedMemberships.length + index + 1).padStart(3, "0"),
+    customer: customer.name,
+    customerId: customer.id,
+    plan,
+    start: "Jun " + String((index % 20) + 1).padStart(2, "0") + ", 2026",
+    end: index % 3 === 0 ? "Oct 24, 2026" : "Dec 20, 2026",
+    status: index % 4 === 0 ? "Expired" : "Active",
+    payment: index % 5 === 0 ? "Pending" : "Paid",
+    paymentMethod: index % 2 ? "Card" : "Cash",
+    branch: branchNames[(index + 1) % branchNames.length],
+    price,
+    monthlyDues: isStudent ? (isCoaching ? 1300 : 600) : (isCoaching ? 1500 : 800),
+    initiationFee: isCoaching ? (isStudent ? 100 : 150) : 0,
+    freeIntroMonths: isCoaching ? 1 : 0,
+    promoDiscount: isCoaching ? 12 : 0,
+    promoName: isCoaching ? "New member launch" : undefined,
+    outstandingBalance: index % 5 === 0 ? price : 0,
+    nextDueDate: index % 3 === 0 ? "Oct 24, 2026" : "Dec 20, 2026",
+    renewalEligible: true,
+  };
+});
 export const memberships: Membership[] = [...seedMemberships, ...generatedMemberships, ...additionalMemberships];
 export const membershipPayments: PaymentRecord[] = [...seedPayments, ...memberships.flatMap<PaymentRecord>((membership, index) => membership.payment === "Pending" ? [{ id: "PAY-DEMO-" + String(index * 3 + 1).padStart(3, "0"), membershipId: membership.id, date: membership.start, amount: membership.price, method: membership.paymentMethod ?? "Cash", reference: "PENDING-" + String(index * 3 + 1).padStart(4, "0"), category: "Membership" as const, branch: membership.branch, status: "Pending" as const, serviceName: membership.plan }] : [0, 1, 2].map((renewal) => ({ id: "PAY-DEMO-" + String(index * 3 + renewal + 1).padStart(3, "0"), membershipId: membership.id, date: renewal === 0 ? membership.start : "Oct " + String(renewal + 1).padStart(2, "0") + ", 2026", amount: membership.price, method: renewal === 1 ? "GCash" : membership.paymentMethod ?? "Cash", reference: "DEMO-" + String(index * 3 + renewal + 1).padStart(4, "0"), category: "Membership" as const, branch: membership.branch, status: "Paid" as const, serviceName: membership.plan })) )];
 export const walkIns: WalkIn[] = [...seedWalkIns, ...generatedCustomers.filter((customer) => customer.type === "Walk-in").map((customer, index) => { const coached = index % 4 === 1; const service = coached ? { amount: 200, studentAmount: 180 } : { amount: 100, studentAmount: 80 }; return { id: "VIS-DEMO-" + String(index + 1).padStart(3, "0"), customer: customer.name, customerId: customer.id, branch: customer.branch, date: "Oct " + String((index % 20) + 1).padStart(2, "0") + ", 2026", timeIn: index % 3 === 0 ? "—" : "08:15 AM", timeOut: index % 3 === 0 ? "—" : "10:00 AM", fee: customer.classification === "Student" ? service.studentAmount : service.amount, payment: index % 3 === 0 ? "Pending" : "Paid", method: index % 3 === 0 ? "—" : "Cash", status: index % 3 === 0 ? "Registered" : "Completed", serviceName: coached ? "Walk-in with coach (1 hour)" : "Non-member walk-in" }; })] as unknown as WalkIn[];

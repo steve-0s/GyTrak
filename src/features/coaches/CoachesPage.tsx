@@ -9,12 +9,16 @@ type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) =>
 const emptyForm = { name: "", specialty: "", phone: "" };
 
 export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { coaches, upsertCoach, removeCoach } = useGymData();
+  const { coaches, branches, upsertCoach, removeCoach } = useGymData();
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Coach | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const activeBranches = branches.filter((item) => item.status === "Active");
+  const operationBranch = isAdmin
+    ? activeBranches.find((item) => item.name === branch)?.name ?? activeBranches[0]?.name
+    : activeBranches.find((item) => item.name === assignedBranch)?.name;
 
   const rows = useMemo(
     () =>
@@ -53,7 +57,7 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
           id: `COA-${String(Date.now()).slice(-3)}`,
           name: form.name.trim(),
           specialty: form.specialty.trim(),
-          branch: branch === "All branches" ? assignedBranch : branch,
+          branch: operationBranch ?? "",
           status: "Active",
           phone: form.phone.trim() || "—",
         });
@@ -83,7 +87,7 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
           <p className="mt-1 text-sm text-[var(--text-muted)]">Manage coach records and branch assignments.</p>
         </div>
         <div className="page-header-actions">
-        <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)]">
+        <button onClick={openCreate} disabled={!operationBranch} className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--on-accent)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50">
           <Plus size={16} /> Add coach
         </button>
         </div>
@@ -110,7 +114,7 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
             <Search size={15} className="text-[var(--text-muted)]" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search coaches" className="w-full bg-transparent text-sm outline-none" />
           </label>
-          {isAdmin && <select value={branch} onChange={(event) => setBranch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs"><option>All branches</option><option>Makati Central</option><option>BGC High Street</option><option>Cebu IT Park</option></select>}
+          {isAdmin && <select value={branch} onChange={(event) => setBranch(event.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs"><option>All branches</option>{activeBranches.map((item) => <option key={item.id}>{item.name}</option>)}</select>}
         </div>
         <div className="table-viewport overflow-x-auto">
           <table className="data-table min-w-[760px]">

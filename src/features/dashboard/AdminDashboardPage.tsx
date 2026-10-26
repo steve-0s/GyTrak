@@ -41,7 +41,12 @@ export default function AdminDashboardPage({ onAction }: Props) {
     const branchVisits = visits.filter((visit) => visit.branch === item.name);
     const branchWalkIns = walkIns.filter((visit) => visit.branch === item.name);
     const branchMemberships = memberships.filter((membership) => membership.branch === item.name);
-    return { branch: item.name, customers: customers.filter((customer) => customer.branch === item.name).length, visits: branchVisits.length, unique: new Set(branchVisits.map((visit) => visit.customerId)).size, memberships: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: payments.filter((payment) => branchMemberships.some((membership) => membership.id === payment.membershipId)).reduce((sum, payment) => sum + payment.amount, 0), expiring: branchMemberships.filter((membership) => { const key = membershipDueState(membership.end).key; return key === "soon" || key === "today"; }).length };
+    const collectedRevenue = payments.filter((payment) => {
+      const paymentMembership = branchMemberships.find((membership) => membership.id === payment.membershipId);
+      return paymentMembership && (payment.status ?? "Paid") === "Paid" && payment.category !== "Promo discount";
+    }).reduce((sum, payment) => sum + payment.amount, 0);
+    const outstandingBalance = branchMemberships.reduce((sum, membership) => sum + (membership.outstandingBalance ?? 0), 0);
+    return { branch: item.name, customers: customers.filter((customer) => customer.branch === item.name).length, visits: branchVisits.length, unique: new Set(branchVisits.map((visit) => visit.customerId)).size, memberships: branchMemberships.filter((membership) => membership.status === "Active").length, walkIns: branchWalkIns.length, revenue: collectedRevenue, outstanding: outstandingBalance, expiring: branchMemberships.filter((membership) => { const key = membershipDueState(membership.end).key; return key === "soon" || key === "today"; }).length, overdue: branchMemberships.filter((membership) => membershipDueState(membership.end).key === "overdue").length };
   }), [branchRecords, customers, memberships, visits, walkIns, payments]);
   const membershipStatus = ["Active", "Pending", "Expired", "Suspended"].map((name, index) => ({ name, value: memberships.filter((membership) => membership.status === name).length, color: ["#60A5FA", "#FBBF24", "#9CA3AF", "#F87171"][index] }));
   const [branch, setBranch] = useState("All Branches");
@@ -62,7 +67,9 @@ export default function AdminDashboardPage({ onAction }: Props) {
           memberships: total.memberships + row.memberships,
           walkIns: total.walkIns + row.walkIns,
           revenue: total.revenue + row.revenue,
+          outstanding: total.outstanding + row.outstanding,
           expiring: total.expiring + row.expiring,
+          overdue: total.overdue + row.overdue,
         }),
         {
           visits: 0,
@@ -70,7 +77,9 @@ export default function AdminDashboardPage({ onAction }: Props) {
           memberships: 0,
           walkIns: 0,
           revenue: 0,
+          outstanding: 0,
           expiring: 0,
+          overdue: 0,
         },
       ),
     [visibleBranches],
@@ -108,15 +117,27 @@ export default function AdminDashboardPage({ onAction }: Props) {
       false,
     ],
     [
-      "Recorded revenue",
+      "Collected revenue",
       formatPHP(Math.round(totals.revenue * scale)),
-      "Collected payments",
+      "Payments received · excludes waived fees",
+      false,
+    ],
+    [
+      "Outstanding balance",
+      formatPHP(Math.round(totals.outstanding)),
+      "Unpaid dues and late renewal amounts",
       false,
     ],
     [
       "Expiring soon",
       formatNumber(expiringSoon),
       "Within the next 30 days",
+      false,
+    ],
+    [
+      "Overdue renewals",
+      formatNumber(totals.overdue),
+      "Requires payment follow-up",
       false,
     ],
   ];

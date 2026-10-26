@@ -1,6 +1,7 @@
 export type Role = "Admin" | "Front Desk"
 export type Theme = "light" | "dark"
-export type Branch = { id: string; name: string; location: string; status: "Active" | "Inactive" }
+export type BranchStatus = "Active" | "Inactive" | "Archived"
+export type Branch = { id: string; name: string; location: string; status: BranchStatus }
 export type BranchRecord = Branch & { customers: number; memberships: number; visits: number; revenue: number; frontDesk: number }
 export type Customer = {
   id: string
@@ -68,9 +69,36 @@ export type VisitRecord = {
 }
 export type MembershipStatus = "Active" | "Pending" | "Expired" | "Suspended"
 export type PaymentStatus = "Paid" | "Pending"
-export type MembershipPlan = { name: string; duration: string; price: number; studentPrice?: number; active: boolean; used: number }
+export type MembershipPlan = {
+  name: string
+  duration: string
+  durationMonths: number
+  price: number
+  monthlyDues: number
+  initiationFee: number
+  studentPrice?: number
+  studentMonthlyDues?: number
+  studentInitiationFee?: number
+  active: boolean
+  used: number
+  promoName?: string
+  promoDiscountPercent?: number
+  freeIntroMonths?: number
+  promoCode?: string
+}
 export type ServicePrice = { id: string; name: string; category: "Walk-in access" | "Coaching" | "Other service"; amount: number; studentAmount?: number; active: boolean }
-export type PaymentRecord = { id: string; membershipId: string; date: string; amount: number; method: string; reference: string; category?: "Membership" | "Walk-in" | "Coaching" | "Other service"; branch?: string; status?: PaymentStatus; serviceName?: string }
+export type PaymentRecord = {
+  id: string
+  membershipId: string
+  date: string
+  amount: number
+  method: string
+  reference: string
+  category?: "Membership" | "Walk-in" | "Coaching" | "Other service" | "Initiation fee" | "Monthly dues" | "Renewal fee" | "Promo discount"
+  branch?: string
+  status?: PaymentStatus
+  serviceName?: string
+}
 export type Membership = {
   id: string
   customer: string
@@ -83,6 +111,14 @@ export type Membership = {
   paymentMethod?: string
   branch: string
   price: number
+  monthlyDues: number
+  initiationFee: number
+  freeIntroMonths: number
+  promoDiscount: number
+  promoName?: string
+  outstandingBalance?: number
+  nextDueDate?: string
+  renewalEligible?: boolean
 }
 export type Coach = { id: string; name: string; specialty: string; branch: string; status: "Active" | "Inactive"; phone: string }
 export type Keyfob = { id: string; uid: string; customer: string; branch: string; status: "Assigned" | "Unassigned" | "Deactivated"; date: string }
@@ -99,6 +135,14 @@ export type ReminderSettings = {
   emailTemplate: string
   smsTemplate: string
   gymContact: string
+}
+export type MembershipPolicySettings = {
+  defaultDurationMonths: 1 | 3 | 6 | 12
+  renewalWindowDays: number
+  overdueAccessPolicy: "Restrict access" | "Allow with manager review" | "Allow with warning"
+  initiationFeePolicy: "Charge standard fee" | "Waive first month" | "Apply campaign waiver"
+  maxPromotionDiscountPercent: number
+  freeIntroMonthsCap: number
 }
 export type ReminderRecord = {
   id: string; customerId: string; membershipId: string; branch: string; stage: ReminderStage
