@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,9 +34,17 @@ CREATE TABLE branches (
     address TEXT,
     phone TEXT,
     status TEXT NOT NULL DEFAULT 'active',
+    archived_at TIMESTAMPTZ,
+    archived_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CHECK (status IN ('active', 'inactive'))
+    FOREIGN KEY (archived_by) REFERENCES users(id),
+
+    CHECK (status IN ('active', 'inactive', 'archived')),
+    CHECK (
+        (status = 'archived' AND archived_at IS NOT NULL AND archived_by IS NOT NULL)
+        OR (status <> 'archived' AND archived_at IS NULL AND archived_by IS NULL)
+    )
 );
 
 CREATE TABLE user_branch_assignments (
@@ -56,6 +65,7 @@ CREATE TABLE user_branch_assignments (
 CREATE TABLE customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_code TEXT NOT NULL UNIQUE,
+    branch_id UUID NOT NULL,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     phone TEXT,
@@ -66,6 +76,8 @@ CREATE TABLE customers (
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
 
     CHECK (customer_type IN ('regular', 'student')),
     CHECK (status IN ('active', 'inactive', 'suspended'))
@@ -101,12 +113,21 @@ CREATE TABLE coach_branch_assignments (
 CREATE TABLE membership_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    duration_months INTEGER NOT NULL,
+    duration_value INTEGER NOT NULL,
+    duration_unit TEXT NOT NULL DEFAULT 'months',
     includes_coaching BOOLEAN NOT NULL DEFAULT FALSE,
+    promotion_eligible BOOLEAN NOT NULL DEFAULT TRUE,
+    promotion_name TEXT,
+    promotion_code TEXT,
+    promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    free_intro_months INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CHECK (duration_months > 0),
+    CHECK (duration_value > 0),
+    CHECK (duration_unit IN ('days', 'months')),
+    CHECK (promotion_discount_percent BETWEEN 0 AND 100),
+    CHECK (free_intro_months BETWEEN 0 AND 12),
     CHECK (status IN ('active', 'inactive'))
 );
 
@@ -115,24 +136,101 @@ CREATE TABLE membership_plan_prices (
     plan_id UUID NOT NULL,
     customer_type TEXT NOT NULL,
     branch_id UUID,
-    price NUMERIC(12, 2) NOT NULL,
+    monthly_dues NUMERIC(12, 2) NOT NULL,
+    initiation_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    renewal_monthly_dues NUMERIC(12, 2),
+    renewal_initiation_fee NUMERIC(12, 2),
     currency CHAR(3) NOT NULL DEFAULT 'PHP',
     effective_from DATE NOT NULL,
     effective_to DATE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
     FOREIGN KEY (plan_id) REFERENCES membership_plans(id),
     FOREIGN KEY (branch_id) REFERENCES branches(id),
 
     CHECK (customer_type IN ('regular', 'student')),
-    CHECK (price >= 0),
+    CHECK (monthly_dues >= 0),
+    CHECK (initiation_fee >= 0),
+    CHECK (renewal_monthly_dues IS NULL OR renewal_monthly_dues >= 0),
+    CHECK (renewal_initiation_fee IS NULL OR renewal_initiation_fee >= 0),
     CHECK (effective_to IS NULL OR effective_to >= effective_from)
 );
+
+ALTER TABLE membership_plan_prices
+    ADD CONSTRAINT ex_membership_plan_prices_global_effective_dates
+        EXCLUDE USING gist (
+            plan_id WITH =,
+            customer_type WITH =,
+            daterange(effective_from, effective_to, '[]') WITH &&
+        )
+        WHERE (is_active AND branch_id IS NULL),
+    ADD CONSTRAINT ex_membership_plan_prices_branch_effective_dates
+        EXCLUDE USING gist (
+            plan_id WITH =,
+            customer_type WITH =,
+            branch_id WITH =,
+            daterange(effective_from, effective_to, '[]') WITH &&
+        )
+        WHERE (is_active AND branch_id IS NOT NULL);
+
+CREATE TABLE membership_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    branch_id UUID,
+    default_duration_value INTEGER NOT NULL DEFAULT 1,
+    duration_unit TEXT NOT NULL DEFAULT 'months',
+    billing_frequency TEXT NOT NULL DEFAULT 'monthly',
+    initiation_fee_policy TEXT NOT NULL DEFAULT 'standard',
+    free_intro_months_cap INTEGER NOT NULL DEFAULT 2,
+    max_promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 15,
+    renewal_window_days INTEGER NOT NULL DEFAULT 7,
+    overdue_access_policy TEXT NOT NULL DEFAULT 'allow_with_manager_review',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+
+    CHECK (default_duration_value > 0),
+    CHECK (duration_unit IN ('days', 'months')),
+    CHECK (billing_frequency IN ('weekly', 'monthly', 'quarterly', 'annual')),
+    CHECK (initiation_fee_policy IN ('standard', 'waive_first_month', 'campaign_waiver')),
+    CHECK (free_intro_months_cap BETWEEN 0 AND 12),
+    CHECK (max_promotion_discount_percent BETWEEN 0 AND 100),
+    CHECK (renewal_window_days BETWEEN 1 AND 30),
+    CHECK (overdue_access_policy IN (
+        'restrict_access',
+        'allow_with_manager_review',
+        'allow_with_warning'
+    ))
+);
+
+CREATE UNIQUE INDEX idx_membership_policies_active_branch
+    ON membership_policies(branch_id)
+    WHERE is_active AND branch_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_membership_policies_active_global
+    ON membership_policies((branch_id IS NULL))
+    WHERE is_active AND branch_id IS NULL;
 
 CREATE TABLE memberships (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id UUID NOT NULL,
     branch_id UUID NOT NULL,
     plan_id UUID NOT NULL,
+    renewal_of_membership_id UUID,
+    customer_type TEXT NOT NULL,
+    duration_value INTEGER NOT NULL,
+    duration_unit TEXT NOT NULL DEFAULT 'months',
+    monthly_dues NUMERIC(12, 2) NOT NULL,
+    initiation_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    initiation_fee_waived_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    promotion_name TEXT,
+    promotion_code TEXT,
+    promotion_discount_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
+    free_intro_months INTEGER NOT NULL DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'pending',
+    next_payment_due_date DATE,
+    renewal_eligible BOOLEAN NOT NULL DEFAULT FALSE,
     status TEXT NOT NULL DEFAULT 'pending_payment',
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
@@ -143,9 +241,23 @@ CREATE TABLE memberships (
     FOREIGN KEY (customer_id) REFERENCES customers(id),
     FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (plan_id) REFERENCES membership_plans(id),
+    FOREIGN KEY (renewal_of_membership_id, customer_id)
+        REFERENCES memberships(id, customer_id),
     FOREIGN KEY (created_by) REFERENCES users(id),
 
+    UNIQUE (id, customer_id),
+    UNIQUE (id, customer_id, branch_id),
+    CHECK (customer_type IN ('regular', 'student')),
+    CHECK (duration_value > 0),
+    CHECK (duration_unit IN ('days', 'months')),
+    CHECK (monthly_dues >= 0),
+    CHECK (initiation_fee >= 0),
+    CHECK (initiation_fee_waived_amount BETWEEN 0 AND initiation_fee),
+    CHECK (promotion_discount_percent BETWEEN 0 AND 100),
+    CHECK (free_intro_months BETWEEN 0 AND 12),
+    CHECK (payment_status IN ('pending', 'partially_paid', 'paid', 'overdue', 'refunded')),
     CHECK (end_date >= start_date),
+    CHECK (renewal_of_membership_id IS NULL OR renewal_of_membership_id <> id),
     CHECK (status IN (
         'pending_payment',
         'active',
@@ -161,7 +273,13 @@ CREATE TABLE membership_periods (
     period_number INTEGER NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
+    due_date DATE,
+    list_price NUMERIC(12, 2) NOT NULL,
     price_charged NUMERIC(12, 2) NOT NULL,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    waived_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    is_free_intro BOOLEAN NOT NULL DEFAULT FALSE,
+    billing_status TEXT NOT NULL DEFAULT 'pending',
     status TEXT NOT NULL DEFAULT 'pending_payment',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -171,7 +289,13 @@ CREATE TABLE membership_periods (
 
     CHECK (period_number > 0),
     CHECK (end_date >= start_date),
+    CHECK (list_price >= 0),
     CHECK (price_charged >= 0),
+    CHECK (discount_amount >= 0),
+    CHECK (waived_amount >= 0),
+    CHECK (price_charged + discount_amount + waived_amount = list_price),
+    CHECK (NOT is_free_intro OR (price_charged = 0 AND waived_amount = list_price)),
+    CHECK (billing_status IN ('pending', 'partially_paid', 'paid', 'waived', 'overdue')),
     CHECK (status IN (
         'pending_payment',
         'active',
@@ -184,6 +308,7 @@ CREATE TABLE transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     branch_id UUID NOT NULL,
     customer_id UUID NOT NULL,
+    membership_id UUID,
     transaction_type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     subtotal NUMERIC(12, 2) NOT NULL,
@@ -195,12 +320,19 @@ CREATE TABLE transactions (
 
     FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (membership_id, customer_id, branch_id)
+        REFERENCES memberships(id, customer_id, branch_id),
     FOREIGN KEY (created_by) REFERENCES users(id),
 
     CHECK (transaction_type IN ('membership', 'walk_in')),
+    CHECK (
+        (transaction_type = 'membership' AND membership_id IS NOT NULL)
+        OR (transaction_type = 'walk_in' AND membership_id IS NULL)
+    ),
     CHECK (status IN ('pending', 'partially_paid', 'paid', 'cancelled', 'refunded')),
     CHECK (subtotal >= 0),
     CHECK (discount_amount >= 0),
+    CHECK (discount_amount <= subtotal),
     CHECK (total_amount >= 0)
 );
 
@@ -219,6 +351,14 @@ CREATE TABLE transaction_items (
     FOREIGN KEY (membership_period_id) REFERENCES membership_periods(id),
     FOREIGN KEY (coach_id) REFERENCES coaches(id),
 
+    CHECK (item_type IN (
+        'monthly_dues',
+        'initiation_fee',
+        'renewal_fee',
+        'walk_in',
+        'coaching',
+        'other_service'
+    )),
     CHECK (quantity > 0),
     CHECK (unit_price >= 0),
     CHECK (line_total >= 0)
@@ -238,6 +378,7 @@ CREATE TABLE payments (
     FOREIGN KEY (transaction_id) REFERENCES transactions(id),
     FOREIGN KEY (received_by) REFERENCES users(id),
 
+    UNIQUE (id, transaction_id),
     CHECK (amount > 0),
     CHECK (payment_method IN (
         'cash',
@@ -255,25 +396,102 @@ CREATE TABLE payment_allocations (
     transaction_id UUID NOT NULL,
     amount NUMERIC(12, 2) NOT NULL,
 
-    FOREIGN KEY (payment_id) REFERENCES payments(id),
+    FOREIGN KEY (payment_id, transaction_id)
+        REFERENCES payments(id, transaction_id),
     FOREIGN KEY (transaction_id) REFERENCES transactions(id),
 
+    UNIQUE (payment_id, transaction_id),
     CHECK (amount > 0)
 );
+
+CREATE FUNCTION enforce_payment_allocation_amount()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    payment_amount NUMERIC(12, 2);
+    allocated_amount NUMERIC(12, 2);
+BEGIN
+    PERFORM p.id
+    FROM payments p
+    WHERE p.id = NEW.payment_id
+       OR (TG_OP = 'UPDATE' AND p.id = OLD.payment_id)
+    ORDER BY p.id
+    FOR UPDATE;
+
+    SELECT p.amount
+    INTO payment_amount
+    FROM payments p
+    WHERE p.id = NEW.payment_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'payment % does not exist', NEW.payment_id;
+    END IF;
+
+    SELECT COALESCE(SUM(pa.amount), 0)
+    INTO allocated_amount
+    FROM payment_allocations pa
+    WHERE pa.payment_id = NEW.payment_id
+      AND (TG_OP = 'INSERT' OR pa.id <> NEW.id);
+
+    IF allocated_amount + NEW.amount > payment_amount THEN
+        RAISE EXCEPTION 'payment allocations cannot exceed the payment amount';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_enforce_payment_allocation_amount
+BEFORE INSERT OR UPDATE ON payment_allocations
+FOR EACH ROW
+EXECUTE FUNCTION enforce_payment_allocation_amount();
+
+CREATE FUNCTION enforce_payment_amount_not_below_allocations()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    allocated_amount NUMERIC(12, 2);
+BEGIN
+    SELECT COALESCE(SUM(pa.amount), 0)
+    INTO allocated_amount
+    FROM payment_allocations pa
+    WHERE pa.payment_id = NEW.id;
+
+    IF allocated_amount > NEW.amount THEN
+        RAISE EXCEPTION 'payment amount cannot be less than its allocated amount';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_enforce_payment_amount_not_below_allocations
+BEFORE UPDATE OF amount ON payments
+FOR EACH ROW
+EXECUTE FUNCTION enforce_payment_amount_not_below_allocations();
 
 CREATE TABLE transaction_adjustments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     transaction_id UUID NOT NULL,
+    payment_id UUID,
     adjustment_type TEXT NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'decrease',
     amount NUMERIC(12, 2) NOT NULL,
     reason TEXT NOT NULL,
     created_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+    FOREIGN KEY (payment_id, transaction_id)
+        REFERENCES payment_allocations(payment_id, transaction_id),
     FOREIGN KEY (created_by) REFERENCES users(id),
 
-    CHECK (adjustment_type IN ('discount', 'refund', 'correction')),
+    CHECK (adjustment_type IN ('discount', 'refund', 'correction', 'waiver')),
+    CHECK (direction IN ('increase', 'decrease')),
+    CHECK (adjustment_type <> 'refund' OR payment_id IS NOT NULL),
+    CHECK (adjustment_type = 'correction' OR direction = 'decrease'),
     CHECK (amount > 0)
 );
 
@@ -286,6 +504,7 @@ CREATE TABLE attendance_records (
     time_out TIMESTAMPTZ,
     source TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'checked_in',
+    sync_status TEXT NOT NULL DEFAULT 'synced',
     device_id UUID,
     created_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -302,6 +521,7 @@ CREATE TABLE attendance_records (
     CHECK (time_out IS NULL OR time_out >= time_in),
     CHECK (source IN ('rfid', 'manual')),
     CHECK (status IN ('checked_in', 'completed', 'voided')),
+    CHECK (sync_status IN ('synced', 'pending', 'failed')),
     CHECK (
         (status <> 'voided')
         OR (voided_at IS NOT NULL AND void_reason IS NOT NULL)
@@ -334,6 +554,7 @@ CREATE TABLE rfid_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     keyfob_id UUID NOT NULL,
     customer_id UUID NOT NULL,
+    branch_id UUID NOT NULL,
     assigned_by UUID,
     assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deactivated_by UUID,
@@ -342,6 +563,7 @@ CREATE TABLE rfid_assignments (
 
     FOREIGN KEY (keyfob_id) REFERENCES rfid_keyfobs(id),
     FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
     FOREIGN KEY (assigned_by) REFERENCES users(id),
     FOREIGN KEY (deactivated_by) REFERENCES users(id),
 
@@ -401,6 +623,13 @@ CREATE TABLE membership_reminders (
     membership_id UUID NOT NULL,
     customer_id UUID NOT NULL,
     scheduled_at TIMESTAMPTZ,
+    stage TEXT NOT NULL DEFAULT 'due_today',
+    source TEXT NOT NULL DEFAULT 'manual',
+    channel TEXT NOT NULL DEFAULT 'in_app',
+    eligible_at TIMESTAMPTZ,
+    message TEXT NOT NULL DEFAULT '',
+    reason TEXT,
+    note TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     template_id UUID,
     created_by UUID,
@@ -411,7 +640,25 @@ CREATE TABLE membership_reminders (
     FOREIGN KEY (template_id) REFERENCES reminder_templates(id),
     FOREIGN KEY (created_by) REFERENCES users(id),
 
-    CHECK (status IN ('pending', 'sent', 'failed', 'cancelled', 'expired'))
+    CHECK (stage IN (
+        'seven_days_before',
+        'three_days_before',
+        'due_today',
+        'one_day_overdue',
+        'three_days_overdue'
+    )),
+    CHECK (source IN ('manual', 'simulated_automatic')),
+    CHECK (channel IN ('in_app', 'email', 'sms')),
+    CHECK (status IN (
+        'scheduled',
+        'simulated',
+        'failed',
+        'skipped',
+        'cancelled',
+        'pending',
+        'sent',
+        'expired'
+    ))
 );
 
 CREATE TABLE reminder_attempts (
@@ -431,6 +678,7 @@ CREATE TABLE reminder_attempts (
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recipient_user_id UUID NOT NULL,
+    branch_id UUID,
     notification_type TEXT NOT NULL,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
@@ -439,7 +687,18 @@ CREATE TABLE notifications (
     read_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (recipient_user_id) REFERENCES users(id)
+    FOREIGN KEY (recipient_user_id) REFERENCES users(id),
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+
+    CHECK (notification_type IN (
+        'membership',
+        'payment',
+        'walk-in',
+        'attendance',
+        'rfid',
+        'scanner',
+        'reminder'
+    ))
 );
 
 CREATE TABLE audit_logs (
@@ -476,6 +735,33 @@ CREATE INDEX idx_transactions_branch_created
 
 CREATE INDEX idx_payments_transaction_status
     ON payments(transaction_id, status);
+
+CREATE INDEX idx_transactions_membership_created
+    ON transactions(membership_id, created_at DESC)
+    WHERE membership_id IS NOT NULL;
+
+CREATE INDEX idx_payment_allocations_transaction
+    ON payment_allocations(transaction_id);
+
+CREATE INDEX idx_membership_plan_prices_effective
+    ON membership_plan_prices(plan_id, customer_type, branch_id, effective_from DESC)
+    WHERE is_active;
+
+CREATE UNIQUE INDEX idx_memberships_one_renewal
+    ON memberships(renewal_of_membership_id)
+    WHERE renewal_of_membership_id IS NOT NULL;
+
+CREATE INDEX idx_membership_periods_billing
+    ON membership_periods(membership_id, due_date, billing_status);
+
+CREATE INDEX idx_branches_status
+    ON branches(status);
+
+CREATE INDEX idx_customers_branch
+    ON customers(branch_id);
+
+CREATE INDEX idx_audit_logs_branch_occurred
+    ON audit_logs(branch_id, occurred_at DESC);
 
 CREATE INDEX idx_attendance_customer_date
     ON attendance_records(customer_id, business_date);
