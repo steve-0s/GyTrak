@@ -15,7 +15,7 @@ DATABASE_URL ?= postgres://$(DB_USER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$
 # Migration directory
 MIGRATIONS_PATH=./migration
 
-.PHONY: help run build test clean tidy migrate-up migrate-down migrate-create sqlc createdb dropdb
+.PHONY: help run build test clean tidy migrate-up migrate-down migrate-create sqlc sqlc-verify createdb dropdb
 
 help:
 	@echo "Available commands:"
@@ -61,4 +61,7 @@ migrate-create:
 	migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $$name
 
 sqlc:
-	sqlc generate
+	sqlc generate -f sqlc.yaml
+
+sqlc-verify:
+	sqlc compile -f sqlc.yaml

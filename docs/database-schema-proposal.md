@@ -232,7 +232,58 @@ Purpose: manually recorded payment transactions and history.
 
 Primary key: `id`. Index (`membership_id`, `paid_at`) and (`recorded_by_user_id`, `paid_at`). Optional unique constraint on (`method`, `reference`) when references are guaranteed unique.
 
-The current workflows support multiple payment records per membership but do not expose partial-payment balance logic. Keeping one row per payment preserves history and allows multiple payments. Walk-in fees remain a separate transaction type and must not be treated as membership payment obligations. Refunds, voids, discounts, taxes, and allocation rules are unresolved and must not be inferred from this proposal.
+The current workflows support multiple payment records per membership but do not expose partial-payment balance logic. Keeping one row per payment preserves history and allows multiple payments. Walk-in fees remain a separate transaction type and must not be treated as membership payment obligations. Refund accounting is defined below; voids, discounts, taxes, and any allocation rules beyond the implemented schema must not be inferred from this proposal.
+
+#### Implemented refund accounting policy
+
+GyTrak recognizes refunds in the reporting period when the refund occurs. A completed payment remains gross collected in the period represented by its original `paid_at` timestamp, even if its payment status later becomes `refunded`. A refund is represented by a `transaction_adjustments` row with `adjustment_type = 'refund'`, `direction = 'decrease'`, and `occurred_at` as the refund-event timestamp. Revenue reports subtract that adjustment in the period containing `occurred_at`.
+
+The report does not infer a refund timestamp from `transactions.status` or `payments.status`, because those columns do not preserve when a refund occurred. The service layer must create one refund adjustment for each refund operation and coordinate any related payment-status update in one database transaction. The existing schema requires refund adjustments to reference a payment allocation, and the new occurrence timestamp preserves the actual refund period. The query layer does not join allocations or transaction items when summing financial events, preventing multiplication of payment totals.
+
+The schema now also stores `transaction_adjustments.occurred_at`. New refund operations must set this to the actual refund occurrence time; existing rows are backfilled from `created_at`. Reports use `occurred_at` for refund-period filtering and continue to use `payments.paid_at` for the original payment period. `created_at` remains the row insertion/audit timestamp.
+
+## Database lifecycle and deletion rules
+
+The database layer distinguishes permanent deletion from lifecycle changes:
+
+| Entity | Database lifecycle | Historical rule |
+|---|---|---|
+| Customers | Archive/restore; guarded delete query | Foreign keys reject deletion when memberships, attendance, walk-ins, branch history, or other records remain. Prefer archive. |
+| Coaches | Archive/restore; guarded delete query | Assignments and transaction references prevent unsafe deletion. |
+| Memberships | Cancel/status update | Do not delete memberships with periods, billing pauses, transactions, or payments. |
+| Membership plans | Archive/restore; guarded delete query | Historical prices and memberships prevent deletion through foreign keys. |
+| Walk-ins | Cancel and void related records | Preserve attendance and financial history; do not hard-delete operational walk-ins with references. |
+| Branches | Archive/restore; guarded delete query | Foreign keys and historical records prevent unsafe deletion. |
+| Front Desk accounts/users | Activate/deactivate through user status | Account deletion should be prohibited when audit or assignment history references the user. |
+| Payment methods | Activate/deactivate | Preserve payment-method snapshots; do not delete used methods. |
+| Service prices | Not yet represented in the PostgreSQL schema | The frontend mock `servicePrices` model requires an approved table/versioning design before backend persistence. |
+| Payments/refunds | Preserve; refund/adjustment rows | No destructive delete operation is provided. Refunds are timestamped by occurrence. |
+| Attendance | Correct or void | Attendance history remains append/audit-preserved. |
+| RFID keyfobs/assignments/events | Status/deactivate | Assignment and event history remains available. |
+| Reminders/notifications/audit logs | Insert/status/read history | No destructive delete operations are provided. |
+| Registration history | Retain workflow history | Review status changes preserve the submission record. |
+
+The `DELETE` queries for customers, coaches, membership plans, and branches rely on PostgreSQL foreign-key enforcement. A foreign-key failure is an integrity safeguard, not permission authorization. The future service layer must translate these failures into user-facing errors and prefer archive/deactivation where history exists.
+
+## Required future service-layer transactions
+
+The following query groups must execute in one database transaction:
+
+- Customer creation, initial branch-history insertion, and any audit entry.
+- Customer branch reassignment: end the current history row, update `customers.branch_id`, insert the new history row, and audit the change.
+- Membership creation, membership period creation, transaction/items, payment, allocation, and status changes.
+- Membership renewal and new period creation; historical periods must not be overwritten.
+- Walk-in creation, attendance insertion, transaction creation/linking, and payment/allocation writes.
+- Walk-in cancellation, `CancelWalkIn`, `MarkWalkInPaymentVoided`, `VoidWalkInAttendance`, and `CancelWalkInTransaction`.
+- Payment creation with allocation and transaction-status updates.
+- Refund adjustment creation with `occurred_at` and any related payment/transaction status update. The original payment row must remain unchanged.
+- RFID assignment with keyfob inventory-status changes.
+- Attendance correction/void with correction history and audit-log insertion.
+- Front Desk user deactivation with branch-assignment revocation and audit logging.
+
+SQL branch filters are not authorization. Future Go services must enforce Admin cross-branch access and Front Desk assigned-branch access on every read and write, including nullable branch-filter queries.
+
+Service prices are currently frontend-only mock data. No database table or query is added for them because the existing PostgreSQL schema does not define a service-price entity or its historical/versioning rules.
 
 ### `rfid_keyfobs` and `rfid_assignments`
 

@@ -116,9 +116,11 @@ export default function WalkInsMembershipsPage({
     pauseMembershipBilling,
     resumeMembershipBilling,
     removeMembership,
+    deleteMembership,
     addMembershipPlan,
     archiveMembershipPlan,
     restoreMembershipPlan,
+    deleteMembershipPlan,
     recordWalkInPayment,
     recordMembershipPayment,
     recordManualAttendance,
@@ -208,6 +210,8 @@ export default function WalkInsMembershipsPage({
       <WalkInDetails
         visit={selectedWalkIn}
         onBack={() => setSelectedWalkIn(null)}
+        onCancel={() => { if (!window.confirm(`Cancel walk-in ${selectedWalkIn.id}? Its payment and attendance history will be retained.`)) return; const error = cancelWalkIn(selectedWalkIn.id); if (error) toast.error(error); else { setSelectedWalkIn(null); onAction("Walk-in cancelled"); } }}
+        onDelete={() => { if (!window.confirm(`Permanently delete walk-in ${selectedWalkIn.id}? This is allowed only when no history is attached.`)) return; const error = removeWalkIn(selectedWalkIn.id); if (error) toast.error(error); else { setSelectedWalkIn(null); onAction("Walk-in deleted"); } }}
         onPayment={(method) => {
           recordWalkInPayment(selectedWalkIn.id, method);
           setSelectedWalkIn({ ...selectedWalkIn, payment: "Paid", method });
@@ -324,6 +328,8 @@ export default function WalkInsMembershipsPage({
           setSelectedMembership(null);
           onMembershipOpened?.();
         }}
+        onCancel={() => { if (!window.confirm(`Cancel membership ${selectedMembership.id}? Payment history will be retained.`)) return; removeMembership(selectedMembership.id); setSelectedMembership(null); onAction("Membership cancelled"); }}
+        onDelete={() => { if (!window.confirm(`Permanently delete membership ${selectedMembership.id}? This is allowed only when it has no financial or billing history.`)) return; const error = deleteMembership(selectedMembership.id); if (error) toast.error(error); else { setSelectedMembership(null); onAction("Membership deleted"); } }}
         onUpdate={(updated) => {
           updateMembership(updated);
           setSelectedMembership(updated);
@@ -364,6 +370,12 @@ export default function WalkInsMembershipsPage({
           const error = restoreMembershipPlan(name);
           if (error) toast.error(error);
           else onAction("Membership plan restored");
+        }}
+        onDelete={(name) => {
+          if (!window.confirm(`Permanently delete membership plan ${name}? This cannot be undone.`)) return;
+          const error = deleteMembershipPlan(name);
+          if (error) toast.error(error);
+          else onAction("Membership plan deleted");
         }}
       />
     );
@@ -475,6 +487,12 @@ export default function WalkInsMembershipsPage({
               else onAction("Walk-in cancelled");
             }
           }}
+          onDelete={(row) => {
+            if (!window.confirm(`Permanently delete walk-in ${row.id}? This is allowed only when no attendance or payment history is attached.`)) return;
+            const error = removeWalkIn(row.id);
+            if (error) toast.error(error);
+            else onAction("Walk-in deleted");
+          }}
         />
       ) : (
         <MembershipList
@@ -498,15 +516,21 @@ export default function WalkInsMembershipsPage({
               : undefined
           }
           onSelect={setSelectedMembership}
-          onDelete={(row) => {
+          onCancel={(row) => {
             if (
               window.confirm(
                 `Cancel and archive membership ${row.id}? Payment history will be retained.`,
               )
             ) {
               removeMembership(row.id);
-              onAction("Membership cancelled and archived");
+              onAction("Membership cancelled");
             }
+          }}
+          onDelete={(row) => {
+            if (!window.confirm(`Permanently delete membership ${row.id}? This is allowed only when it has no financial or billing history.`)) return;
+            const error = deleteMembership(row.id);
+            if (error) toast.error(error);
+            else onAction("Membership deleted");
           }}
         />
       )}
@@ -827,6 +851,7 @@ function WalkInList({
   onBranchChange,
   onSelect,
   onCancel,
+  onDelete,
 }: {
   customers: SharedCustomer[];
   customerFilterId: string;
@@ -842,6 +867,7 @@ function WalkInList({
   onBranchChange?: (value: string) => void;
   onSelect: (row: WalkIn) => void;
   onCancel: (row: WalkIn) => void;
+  onDelete: (row: WalkIn) => void;
 }) {
   const paid = allRows
     .filter((row) => row.payment === "Paid")
@@ -956,7 +982,9 @@ function WalkInList({
                 >
                   <RowActions
                     onDetails={() => onSelect(row)}
-                    onDelete={() => onCancel(row)}
+                    onCancel={() => onCancel(row)}
+                    onDelete={() => onDelete(row)}
+                    cancelLabel="Cancel visit"
                   />
                 </td>
               </tr>
@@ -986,6 +1014,7 @@ function MembershipList({
   onBranchChange,
   onSelect,
   onDelete,
+  onCancel,
 }: {
   customers: SharedCustomer[];
   customerFilterId: string;
@@ -1000,6 +1029,7 @@ function MembershipList({
   branches?: string[];
   onBranchChange?: (value: string) => void;
   onSelect: (row: Membership) => void;
+  onCancel: (row: Membership) => void;
   onDelete: (row: Membership) => void;
 }) {
   return (
@@ -1123,7 +1153,9 @@ function MembershipList({
                 >
                   <RowActions
                     onDetails={() => onSelect(row)}
+                    onCancel={() => onCancel(row)}
                     onDelete={() => onDelete(row)}
+                    cancelLabel="Cancel membership"
                   />
                 </td>
               </tr>
@@ -1140,10 +1172,14 @@ function MembershipList({
 
 function RowActions({
   onDetails,
+  onCancel,
   onDelete,
+  cancelLabel,
 }: {
   onDetails: () => void;
+  onCancel?: () => void;
   onDelete: () => void;
+  cancelLabel: string;
 }) {
   return (
     <div className="flex justify-end">
@@ -1159,13 +1195,8 @@ function RowActions({
         >
           View / edit
         </button>
-        <button
-          role="menuitem"
-          onClick={onDelete}
-          className="block w-full rounded-md px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
-        >
-          Cancel visit
-        </button>
+        {onCancel && <button role="menuitem" onClick={onCancel} className="block w-full rounded-md px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50">{cancelLabel}</button>}
+        <button role="menuitem" onClick={onDelete} className="block w-full rounded-md px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button>
       </OverlayDropdown>
     </div>
   );
@@ -1470,11 +1501,15 @@ function WalkInDetails({
   onBack,
   onPayment,
   onCorrect,
+  onCancel,
+  onDelete,
 }: {
   visit: WalkIn;
   onBack: () => void;
   onPayment: (method: string) => void;
   onCorrect: (reason: string) => void;
+  onCancel: () => void;
+  onDelete: () => void;
 }) {
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState("Cash");
@@ -1536,6 +1571,7 @@ function WalkInDetails({
         >
           Save correction
         </button>
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border)] pt-4"><button onClick={onCancel} className="rounded-lg border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-700">Cancel visit</button><button onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700">Delete permanently</button></div>
       </div>
     </FormShell>
   );
@@ -1855,6 +1891,8 @@ function MembershipDetails({
   onPause,
   onResume,
   onBack,
+  onCancel,
+  onDelete,
   onUpdate,
   onAction,
 }: {
@@ -1874,6 +1912,8 @@ function MembershipDetails({
   }) => string | null;
   onResume: (resumedAt: string, resumedBy: string) => string | null;
   onBack: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
   onUpdate: (membership: Membership) => void;
   onAction: (message: string) => void;
 }) {
@@ -2319,6 +2359,7 @@ function MembershipDetails({
         >
           Payment history
         </button>
+        <button onClick={onCancel} className="rounded-lg border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-700">Cancel membership</button><button onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700">Delete permanently</button>
       </div>
     </FormShell>
   );
@@ -2331,6 +2372,7 @@ function PlansPage({
   onSave,
   onArchive,
   onRestore,
+  onDelete,
 }: {
   plans: Plan[];
   policy: MembershipPolicySettings;
@@ -2338,6 +2380,7 @@ function PlansPage({
   onSave: (plan: Plan) => void | Promise<void>;
   onArchive: (name: string) => void;
   onRestore: (name: string) => void;
+  onDelete: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [planStep, setPlanStep] = useState(0);
@@ -3176,7 +3219,7 @@ function PlansPage({
             <div className="mt-5 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
               {plan.used} memberships use this plan
             </div>
-            <button onClick={() => { if (window.confirm(`Archive ${plan.name}? Existing memberships will retain their terms.`)) onArchive(plan.name); }} className="mt-4 rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">Archive plan</button>
+            <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { if (window.confirm(`Archive ${plan.name}? Existing memberships will retain their terms.`)) onArchive(plan.name); }} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">Archive plan</button><button onClick={() => onDelete(plan.name)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button></div>
           </section>
         ))}
       </div>

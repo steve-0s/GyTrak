@@ -1,0 +1,17 @@
+version: "2"
+
+sql:
+  - engine: postgresql
+    schema:
+      - migration/000001_init_schema.up.sql
+      - migration/000002_lifecycle_integrity.up.sql
+      - migration/000003_refund_occurrence_timestamp.up.sql
+    queries: queries
+    gen:
+      go:
+        package: db
+        out: internal/db
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true

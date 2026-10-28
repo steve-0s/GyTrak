@@ -34,26 +34,32 @@ type GymDataContextValue = GymData & {
   updateCustomer: (customer: Customer) => void;
   archiveCustomer: (id: string) => string | null;
   restoreCustomer: (id: string) => string | null;
+  deleteCustomer: (id: string) => string | null;
   updateVisit: (id: string, update: Partial<VisitRecord>) => void;
   recordManualAttendance: (input: { customerId: string; branch: string; type: "Member" | "Walk-in"; date: string; timeIn: string; timeOut: string; note?: string }) => { ok: true; visit: VisitRecord } | { ok: false; error: string };
   updateWalkIn: (id: string, update: Partial<WalkIn>) => void;
   cancelWalkIn: (id: string) => string | null;
   addWalkIn: (walkIn: WalkIn) => void;
-  removeWalkIn: (id: string) => void;
+  removeWalkIn: (id: string) => string | null;
   createMembership: (membership: Membership) => string | null;
   updateMembership: (membership: Membership) => void;
   pauseMembershipBilling: (id: string, pause: MembershipBillingPause) => string | null;
   resumeMembershipBilling: (id: string, resumedAt: string, resumedBy: string) => string | null;
   removeMembership: (id: string) => void;
+  deleteMembership: (id: string) => string | null;
   addMembershipPlan: (plan: MembershipPlan) => void;
   archiveMembershipPlan: (name: string) => string | null;
   restoreMembershipPlan: (name: string) => string | null;
+  deleteMembershipPlan: (nameOrId: string) => string | null;
   updateMembershipPolicySettings: (settings: MembershipPolicySettings) => void;
   upsertPaymentMethod: (method: PaymentMethod) => string | null;
+  deletePaymentMethod: (id: string) => string | null;
   upsertServicePrice: (price: ServicePrice) => void;
+  deleteServicePrice: (id: string) => string | null;
   recordMembershipPayment: (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => string | null;
   upsertCoach: (coach: Coach) => void;
   removeCoach: (id: string) => void;
+  deleteCoach: (id: string) => string | null;
   archiveCoach: (id: string) => string | null;
   restoreCoach: (id: string) => string | null;
   assignKeyfob: (id: string, customer: string, branch: string) => void;
@@ -63,6 +69,7 @@ type GymDataContextValue = GymData & {
   deleteBranch: (id: string) => string | null;
   upsertFrontDeskAccount: (account: FrontDeskAccount) => void;
   toggleFrontDeskAccount: (id: string) => void;
+  deleteFrontDeskAccount: (id: string) => string | null;
   addAuditLog: (entry: AuditLog) => void;
   addReminder: (record: ReminderRecord) => void;
   updateReminderSettings: (settings: ReminderSettings) => void;
@@ -230,6 +237,18 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     persist({ ...data, customers: data.customers.map((item) => item.id === id ? { ...item, status: restoredStatus, archivedAt: undefined, archivedFromStatus: undefined } : item) });
     return null;
   };
+  const deleteCustomer = (id: string) => {
+    const customer = data.customers.find((item) => item.id === id);
+    if (!customer) return "Customer was not found.";
+    if (data.memberships.some((item) => item.customerId === id)) return "This customer has membership history. Archive the customer instead.";
+    if (data.walkIns.some((item) => item.customerId === id) || data.visits.some((item) => item.customerId === id)) return "This customer has attendance or walk-in history. Archive the customer instead.";
+    if (data.payments.some((item) => item.membershipId && data.memberships.some((membership) => membership.customerId === id && membership.id === item.membershipId))) return "This customer has payment history. Archive the customer instead.";
+    if (data.keyfobs.some((item) => item.customer === customer.name)) return "This customer has keyfob assignment history. Archive the customer instead.";
+    if (data.reminderRecords.some((item) => item.customerId === id)) return "This customer has reminder history. Archive the customer instead.";
+    if (data.registrations.some((item) => item.customerId === id)) return "This customer is linked to a registration record. Archive the customer instead.";
+    persist({ ...data, customers: data.customers.filter((item) => item.id !== id) });
+    return null;
+  };
   const updateVisit = (id: string, update: Partial<VisitRecord>) => persist({ ...data, visits: data.visits.map((item) => item.id === id ? { ...item, ...update } : item) });
   const recordManualAttendance = (input: { customerId: string; branch: string; type: "Member" | "Walk-in"; date: string; timeIn: string; timeOut: string; note?: string }) => {
     const customer = data.customers.find((item) => item.id === input.customerId);
@@ -246,7 +265,14 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     const payment = walkIn.payment === "Paid" ? { id: nextMockId("PAY", 500), membershipId: "", date: walkIn.date, amount: walkIn.fee, method: walkIn.method, reference: walkIn.id, category: "Walk-in" as const, branch: walkIn.branch, status: "Paid" as const, serviceName: walkIn.serviceName ?? "Non-member walk-in" } : undefined;
     persist({ ...data, walkIns: [walkIn, ...data.walkIns], payments: payment ? [payment, ...data.payments] : data.payments });
   };
-  const removeWalkIn = (id: string) => persist({ ...data, walkIns: data.walkIns.filter((item) => item.id !== id) });
+  const removeWalkIn = (id: string) => {
+    const walkIn = data.walkIns.find((item) => item.id === id);
+    if (!walkIn) return "Walk-in record was not found.";
+    if (walkIn.attendanceId || data.visits.some((item) => item.walkInId === id || item.id === walkIn.attendanceId)) return "This walk-in has attendance history. Cancel it instead of deleting it.";
+    if (data.payments.some((item) => item.reference === id || item.category === "Walk-in" && item.reference === id)) return "This walk-in has payment history. Cancel it instead of deleting it.";
+    persist({ ...data, walkIns: data.walkIns.filter((item) => item.id !== id) });
+    return null;
+  };
   const cancelWalkIn = (id: string) => {
     const walkIn = data.walkIns.find((item) => item.id === id);
     if (!walkIn) return "Walk-in record was not found.";
@@ -325,6 +351,13 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
       ? { ...item, status: "Cancelled", cancelledAt: nowLabel(), billingPaused: false }
       : item),
   });
+  const deleteMembership = (id: string) => {
+    const membership = data.memberships.find((item) => item.id === id);
+    if (!membership) return "Membership was not found.";
+    if (data.payments.some((item) => item.membershipId === id) || membership.billingPeriods?.length || membership.billingPauses?.length) return "This membership has financial or billing history. Cancel it instead of deleting it.";
+    persist({ ...data, memberships: data.memberships.filter((item) => item.id !== id) });
+    return null;
+  };
   const addMembershipPlan = (plan: MembershipPlan) => persist({ ...data, membershipPlans: data.membershipPlans.some((item) => item.name === plan.name) ? data.membershipPlans.map((item) => item.name === plan.name ? plan : item) : [...data.membershipPlans, plan] });
   const archiveMembershipPlan = (name: string) => {
     const plan = data.membershipPlans.find((item) => item.name === name);
@@ -333,9 +366,16 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     return null;
   };
   const restoreMembershipPlan = (name: string) => {
-    const plan = data.membershipPlans.find((item) => item.name === name);
+    const plan = data.membershipPlans.find((item) => item.name === name || item.id === name);
     if (!plan || !plan.archived) return "Archived membership plan was not found.";
-    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.name === name ? { ...item, active: true, archived: false, archivedAt: undefined } : item) });
+    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.name === name || item.id === name ? { ...item, active: true, archived: false, archivedAt: undefined } : item) });
+    return null;
+  };
+  const deleteMembershipPlan = (nameOrId: string) => {
+    const plan = data.membershipPlans.find((item) => item.name === nameOrId || item.id === nameOrId);
+    if (!plan) return "Membership plan was not found.";
+    if (data.memberships.some((item) => item.plan === plan.name)) return "This plan is used by membership history. Archive it instead.";
+    persist({ ...data, membershipPlans: data.membershipPlans.filter((item) => item.name !== plan.name && item.id !== plan.id) });
     return null;
   };
   const updateMembershipPolicySettings = (settings: MembershipPolicySettings) => persist({ ...data, membershipPolicySettings: settings });
@@ -361,7 +401,20 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     });
     return null;
   };
+  const deletePaymentMethod = (id: string) => {
+    if (!data.paymentMethods.some((item) => item.id === id)) return "Payment method was not found.";
+    if (data.payments.some((item) => item.paymentMethodId === id)) return "This payment method is referenced by payment history. Deactivate it instead.";
+    persist({ ...data, paymentMethods: data.paymentMethods.filter((item) => item.id !== id) });
+    return null;
+  };
   const upsertServicePrice = (price: ServicePrice) => persist({ ...data, servicePrices: data.servicePrices.some((item) => item.id === price.id) ? data.servicePrices.map((item) => item.id === price.id ? price : item) : [...data.servicePrices, price] });
+  const deleteServicePrice = (id: string) => {
+    const price = data.servicePrices.find((item) => item.id === id);
+    if (!price) return "Service price was not found.";
+    if (data.walkIns.some((item) => item.serviceName === price.name)) return "This service price is referenced by walk-in history. Deactivate it instead.";
+    persist({ ...data, servicePrices: data.servicePrices.filter((item) => item.id !== id) });
+    return null;
+  };
   const recordMembershipPayment = (membershipId: string, payment: Omit<PaymentRecord, "id" | "membershipId">) => {
     const membership = data.memberships.find((item) => item.id === membershipId);
     if (!membership) return "Membership was not found.";
@@ -407,6 +460,11 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   };
   const upsertCoach = (coach: Coach) => persist({ ...data, coaches: data.coaches.some((item) => item.id === coach.id) ? data.coaches.map((item) => item.id === coach.id ? coach : item) : [coach, ...data.coaches] });
   const removeCoach = (id: string) => persist({ ...data, coaches: data.coaches.filter((item) => item.id !== id) });
+  const deleteCoach = (id: string) => {
+    if (!data.coaches.some((item) => item.id === id)) return "Coach was not found.";
+    persist({ ...data, coaches: data.coaches.filter((item) => item.id !== id) });
+    return null;
+  };
   const archiveCoach = (id: string) => {
     const coach = data.coaches.find((item) => item.id === id);
     if (!coach) return "Coach was not found.";
@@ -469,6 +527,11 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
   };
   const upsertFrontDeskAccount = (account: FrontDeskAccount) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.some((item) => item.id === account.id) ? data.frontDeskAccounts.map((item) => item.id === account.id ? account : item) : [account, ...data.frontDeskAccounts] });
   const toggleFrontDeskAccount = (id: string) => persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.map((item) => item.id === id ? { ...item, status: item.status === "Active" ? "Inactive" : "Active" } : item) });
+  const deleteFrontDeskAccount = (id: string) => {
+    if (!data.frontDeskAccounts.some((item) => item.id === id)) return "Front Desk account was not found.";
+    persist({ ...data, frontDeskAccounts: data.frontDeskAccounts.filter((item) => item.id !== id) });
+    return null;
+  };
   const addAuditLog = (entry: AuditLog) => persist({ ...data, auditLogs: [entry, ...data.auditLogs] });
   const addReminder = (record: ReminderRecord) => { if (data.reminderRecords.some((item) => item.membershipId === record.membershipId && item.stage === record.stage && item.channel === record.channel && item.status !== "Failed")) return; persist({ ...data, reminderRecords: [record, ...data.reminderRecords] }); };
   const updateReminderSettings = (settings: ReminderSettings) => persist({ ...data, reminderSettings: settings });
@@ -494,7 +557,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     ...data.membershipPlans.filter((item) => item.archived).map((item) => ({ id: item.id ?? item.name, entity: "Membership plan" as const, name: item.name, archivedAt: item.archivedAt ?? "Unknown", status: "Archived" })),
     ...data.coaches.filter((item) => item.status === "Archived").map((item) => ({ id: item.id, entity: "Coach" as const, name: item.name, branch: item.branch, archivedAt: item.archivedAt ?? "Unknown", status: item.status })),
   ];
-  const value = useMemo(() => ({ ...data, archivedRecords, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, archiveCustomer, restoreCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, cancelWalkIn, createMembership, updateMembership, pauseMembershipBilling, resumeMembershipBilling, removeMembership, addMembershipPlan, archiveMembershipPlan, restoreMembershipPlan, updateMembershipPolicySettings, upsertPaymentMethod, upsertServicePrice, recordMembershipPayment, upsertCoach, removeCoach, archiveCoach, restoreCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data, archivedRecords]);
+  const value = useMemo(() => ({ ...data, archivedRecords, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, archiveCustomer, restoreCustomer, deleteCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, cancelWalkIn, createMembership, updateMembership, pauseMembershipBilling, resumeMembershipBilling, removeMembership, deleteMembership, addMembershipPlan, archiveMembershipPlan, restoreMembershipPlan, deleteMembershipPlan, updateMembershipPolicySettings, upsertPaymentMethod, deletePaymentMethod, upsertServicePrice, deleteServicePrice, recordMembershipPayment, upsertCoach, removeCoach, deleteCoach, archiveCoach, restoreCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, deleteFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data, archivedRecords]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

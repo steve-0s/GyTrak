@@ -54,7 +54,7 @@ export default function AdministrationPages({
   initialView = "branches",
 }: Props) {
   const [view, setView] = useState(initialView);
-  const { branches: sharedBranches, frontDeskAccounts: sharedAccounts, auditLogs, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount } = useGymData();
+  const { branches: sharedBranches, frontDeskAccounts: sharedAccounts, auditLogs, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, deleteFrontDeskAccount } = useGymData();
   const branches = sharedBranches;
   const accounts = sharedAccounts;
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
@@ -69,6 +69,14 @@ export default function AdministrationPages({
         branch={selectedBranch}
         onBack={() => setSelectedBranch(null)}
         onAction={onAction}
+        onArchive={() => {
+          if (selectedBranch.status === "Archived") {
+            upsertBranch({ ...selectedBranch, status: "Active" });
+            setSelectedBranch({ ...selectedBranch, status: "Active", archivedAt: undefined });
+            onAction(`${selectedBranch.name} unarchived`);
+          } else setBranchAction({ branch: selectedBranch, action: "archive" });
+        }}
+        onDelete={() => { setDeleteError(""); setBranchAction({ branch: selectedBranch, action: "delete" }); }}
       />
     );
   if (editingAccount)
@@ -183,6 +191,12 @@ export default function AdministrationPages({
             toggleFrontDeskAccount(account.id ?? "");
             onAction(`${account.name} status updated`);
           }}
+          onDelete={(account) => {
+            if (!window.confirm(`Permanently delete ${account.name}'s Front Desk account? This cannot be undone.`)) return;
+            const error = deleteFrontDeskAccount(account.id ?? "");
+            if (error) toast.error(error);
+            else onAction(`${account.name} deleted`);
+          }}
         />
       )}
       {view === "audit" && <AuditList rows={auditLogs} query={query} setQuery={setQuery} />}
@@ -237,6 +251,7 @@ export default function AdministrationPages({
                   }
                   else {
                     onAction(`${branchAction.branch.name} deleted`);
+                    setSelectedBranch(null);
                     setBranchAction(null);
                   }
                 }
@@ -395,10 +410,14 @@ function BranchDetails({
   branch,
   onBack,
   onAction,
+  onArchive,
+  onDelete,
 }: {
   branch: Branch;
   onBack: () => void;
   onAction: (message: string) => void;
+  onArchive: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div>
@@ -416,7 +435,7 @@ function BranchDetails({
             {branch.location}
           </p>
         </div>
-        <span className={`h-fit rounded-full px-2.5 py-1 text-xs font-medium ${badge(branch.status)}`}>{branch.status}</span>
+        <div className="flex flex-wrap items-center gap-2"><span className={`h-fit rounded-full px-2.5 py-1 text-xs font-medium ${badge(branch.status)}`}>{branch.status}</span>{branch.status === "Archived" ? <button onClick={onArchive} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">Restore from archive</button> : <button onClick={onArchive} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700">Archive</button>}<button onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -575,6 +594,7 @@ function AccountList({
   setQuery,
   onEdit,
   onToggle,
+  onDelete,
 }: {
   accounts: Account[];
   branches: Branch[];
@@ -582,6 +602,7 @@ function AccountList({
   setQuery: (value: string) => void;
   onEdit: (account: Account) => void;
   onToggle: (account: Account) => void;
+  onDelete: (account: Account) => void;
 }) {
   const [branch, setBranch] = useState("All branches");
   const [status, setStatus] = useState("All statuses");
@@ -671,6 +692,12 @@ function AccountList({
                     className="font-semibold text-[var(--text-muted)]"
                   >
                     {account.status === "Active" ? "Deactivate" : "Activate"}
+                  </button>
+                  <button
+                    onClick={() => onDelete(account)}
+                    className="ml-3 font-semibold text-red-600"
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>

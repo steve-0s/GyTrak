@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArchiveRestore, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ArchiveRestore, ChevronLeft, ChevronRight, Search, Trash2 } from "lucide-react";
 import FilterSelect from "../../components/shared/FilterSelect";
 import Modal from "../../components/shared/Modal";
 import { useGymData } from "../../contexts/GymDataContext";
@@ -8,7 +8,7 @@ import { toast } from "../../components/shared/toast";
 type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) => void };
 
 export default function ArchivedRecordsScreen({ isAdmin, branch, onAction }: Props) {
-  const { archivedRecords, restoreCustomer, restoreMembershipPlan, restoreCoach, branches, upsertBranch } = useGymData();
+  const { archivedRecords, restoreCustomer, restoreMembershipPlan, restoreCoach, deleteCustomer, deleteMembershipPlan, deleteCoach, branches, upsertBranch, deleteBranch } = useGymData();
   const [query, setQuery] = useState("");
   const [entity, setEntity] = useState("All types");
   const [branchFilter, setBranchFilter] = useState("All branches");
@@ -44,6 +44,16 @@ export default function ArchivedRecordsScreen({ isAdmin, branch, onAction }: Pro
     if (restoreError) { setError(restoreError); toast.error(restoreError); }
     else { setError(""); toast.success(`${record.entity} restored`); onAction(`${record.entity} restored`); }
   };
+  const remove = (record: (typeof rows)[number]) => {
+    if (!window.confirm(`Permanently delete ${record.entity.toLowerCase()} “${record.name}”? This cannot be undone.`)) return;
+    let deleteError: string | null = null;
+    if (record.entity === "Customer") deleteError = deleteCustomer(record.id);
+    if (record.entity === "Coach") deleteError = deleteCoach(record.id);
+    if (record.entity === "Membership plan") deleteError = deleteMembershipPlan(record.id);
+    if (record.entity === "Branch") deleteError = deleteBranch(record.id);
+    if (deleteError) { setError(deleteError); toast.error(deleteError); }
+    else { setSelected(null); setError(""); toast.success(`${record.entity} deleted`); onAction(`${record.entity} deleted`); }
+  };
 
   return <div>
     <div className="page-header">
@@ -70,7 +80,7 @@ export default function ArchivedRecordsScreen({ isAdmin, branch, onAction }: Pro
             {!loading && rows.map((record) => <tr key={`${record.entity}-${record.id}`}>
               <td><button onClick={() => setSelected(record)} className="text-left"><p className="font-semibold hover:text-[var(--accent)]">{record.name}</p><p className="text-xs text-[var(--text-muted)]">{record.id}</p></button></td>
               <td>{record.entity}</td><td>{record.branch ?? "All branches"}</td><td>{record.archivedAt}</td>
-              <td className="text-right"><div className="flex justify-end gap-2"><button onClick={() => setSelected(record)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold hover:bg-[var(--bg)]">Details</button><button onClick={() => restore(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold hover:bg-[var(--bg)]"><ArchiveRestore size={15} /> Restore</button></div></td>
+              <td className="text-right"><div className="flex justify-end gap-2"><button onClick={() => setSelected(record)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold hover:bg-[var(--bg)]">Details</button><button onClick={() => restore(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-semibold hover:bg-[var(--bg)]"><ArchiveRestore size={15} /> Restore</button><button onClick={() => remove(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"><Trash2 size={15} /> Delete</button></div></td>
             </tr>)}
             {!loading && !rows.length && <tr><td colSpan={5} className="px-5 py-12 text-center text-sm text-[var(--text-muted)]">No archived records match the current filters.</td></tr>}
           </tbody>
@@ -78,6 +88,6 @@ export default function ArchivedRecordsScreen({ isAdmin, branch, onAction }: Pro
       </div>
       <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3 text-sm"><span className="text-[var(--text-muted)]">{filtered.length} record{filtered.length === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded-lg border border-[var(--border)] p-2 disabled:opacity-40"><ChevronLeft size={15} /></button><span>Page {page} of {pageCount}</span><button disabled={page >= pageCount} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-[var(--border)] p-2 disabled:opacity-40"><ChevronRight size={15} /></button></div></div>
     </section>
-    {selected && <Modal label={`${selected.entity} details`} onClose={() => setSelected(null)}><h3 className="pr-8 text-xl font-bold">{selected.name}</h3><dl className="mt-5 space-y-3 text-sm"><div><dt className="text-[var(--text-muted)]">Record ID</dt><dd className="font-medium">{selected.id}</dd></div><div><dt className="text-[var(--text-muted)]">Type</dt><dd className="font-medium">{selected.entity}</dd></div><div><dt className="text-[var(--text-muted)]">Branch</dt><dd className="font-medium">{selected.branch ?? "All branches"}</dd></div><div><dt className="text-[var(--text-muted)]">Archived</dt><dd className="font-medium">{selected.archivedAt}</dd></div></dl><button onClick={() => { setSelected(null); restore(selected); }} className="mt-6 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]">Restore record</button></Modal>}
+    {selected && <Modal label={`${selected.entity} details`} onClose={() => setSelected(null)}><h3 className="pr-8 text-xl font-bold">{selected.name}</h3><dl className="mt-5 space-y-3 text-sm"><div><dt className="text-[var(--text-muted)]">Record ID</dt><dd className="font-medium">{selected.id}</dd></div><div><dt className="text-[var(--text-muted)]">Type</dt><dd className="font-medium">{selected.entity}</dd></div><div><dt className="text-[var(--text-muted)]">Branch</dt><dd className="font-medium">{selected.branch ?? "All branches"}</dd></div><div><dt className="text-[var(--text-muted)]">Archived</dt><dd className="font-medium">{selected.archivedAt}</dd></div></dl><div className="mt-6 flex flex-wrap gap-2"><button onClick={() => { setSelected(null); restore(selected); }} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--on-accent)]">Restore record</button><button onClick={() => remove(selected)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700">Delete permanently</button></div></Modal>}
   </div>;
 }

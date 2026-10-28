@@ -38,7 +38,7 @@ function readSettings(role: "Admin" | "Front Desk", accountId?: string): Display
 export default function SettingsPage({ onAction, theme, onThemeChange, account, onChangeEmail, onChangePassword }: Props) {
   const { role } = useAuth();
   const isAdmin = role === "Admin";
-  const { servicePrices, upsertServicePrice, reminderSettings, updateReminderSettings, resetDemoData, paymentMethods, upsertPaymentMethod, branches, membershipPolicySettings: membershipPolicy, updateMembershipPolicySettings: setMembershipPolicy } = useGymData();
+  const { servicePrices, upsertServicePrice, deleteServicePrice, reminderSettings, updateReminderSettings, resetDemoData, paymentMethods, upsertPaymentMethod, deletePaymentMethod, branches, membershipPolicySettings: membershipPolicy, updateMembershipPolicySettings: setMembershipPolicy } = useGymData();
   const [initialSettings] = useState(() => readSettings(role, account?.id));
   const [name, setName] = useState(initialSettings.name);
   const [currency, setCurrency] = useState(initialSettings.currency);
@@ -188,19 +188,20 @@ export default function SettingsPage({ onAction, theme, onThemeChange, account, 
               <p className="mt-3 text-xs text-[var(--text-muted)]">Front Desk users can review these policies but cannot modify them without admin access.</p>
             </Panel>
             <PaymentMethodsPanel
-              methods={paymentMethods}
+                methods={paymentMethods}
               branches={branches.filter((branch) => branch.status === "Active").map((branch) => branch.name)}
               onSave={(method, isNew) => {
                 const error = upsertPaymentMethod(method);
                 if (error) toast.warning(error);
                 else onAction(isNew ? "Payment method added" : "Payment method updated");
                 return error;
-              }}
+                }}
+                onDelete={(method) => { if (!window.confirm(`Permanently delete payment method ${method.name}? This is allowed only when it has no payment history.`)) return; const error = deletePaymentMethod(method.id); if (error) toast.error(error); else onAction("Payment method deleted"); }}
             />
             <Panel title="Service pricing">
               <p className="mb-4 text-xs text-[var(--text-muted)]">Prices apply to new transactions. Recorded payment amounts are not changed when a rate is updated.</p>
               <div className="space-y-3">
-                {servicePrices.map((price) => <PriceRow key={price.id} price={price} onSave={savePrice} onToggle={() => upsertServicePrice({ ...price, active: !price.active })} />)}
+                {servicePrices.map((price) => <PriceRow key={price.id} price={price} onSave={savePrice} onToggle={() => upsertServicePrice({ ...price, active: !price.active })} onDelete={() => { if (!window.confirm(`Permanently delete service price ${price.name}? This is allowed only when it has no related history.`)) return; const error = deleteServicePrice(price.id); if (error) toast.error(error); else onAction("Service price deleted"); }} />)}
               </div>
               <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4"><label className="min-w-[220px] flex-1"><span className="mb-1 block text-xs text-[var(--text-muted)]">New optional service</span><input value={newServiceName} onChange={(event) => setNewServiceName(event.target.value)} placeholder="e.g. Day pass" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Price (₱)</span><input type="number" min="0" step="0.01" value={newServiceAmount} onChange={(event) => setNewServiceAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={addServicePrice} className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--on-accent)]">Add service</button></div>
             </Panel>
@@ -231,10 +232,12 @@ function PaymentMethodsPanel({
   methods,
   branches,
   onSave,
+  onDelete,
 }: {
   methods: PaymentMethod[];
   branches: string[];
   onSave: (method: PaymentMethod, isNew?: boolean) => string | null;
+  onDelete: (method: PaymentMethod) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -270,7 +273,7 @@ function PaymentMethodsPanel({
       </p>
       <div className="space-y-3">
         {methods.map((method) => (
-          <PaymentMethodRow key={method.id} method={method} branches={branches} onSave={onSave} />
+          <PaymentMethodRow key={method.id} method={method} branches={branches} onSave={onSave} onDelete={() => onDelete(method)} />
         ))}
       </div>
       <div className="mt-5 border-t border-[var(--border)] pt-4">
@@ -298,11 +301,13 @@ function PaymentMethodRow({
   method,
   branches,
   onSave,
+  onDelete,
 }: {
   key?: string;
   method: PaymentMethod;
   branches: string[];
   onSave: (method: PaymentMethod, isNew?: boolean) => string | null;
+  onDelete: () => void;
 }) {
   const [name, setName] = useState(method.name);
   const [description, setDescription] = useState(method.description ?? "");
@@ -339,6 +344,7 @@ function PaymentMethodRow({
         {active ? "Active" : "Inactive"}
       </label>
       <button type="button" onClick={save} className="rounded-lg border border-[var(--border)] px-3 py-2.5 text-xs font-semibold">Save</button>
+      <button type="button" onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700">Delete</button>
     </div>
   );
 }
@@ -359,8 +365,8 @@ function PasswordField({ label, value, onChange }: { label: string; value: strin
 function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (value: boolean) => void }) {
   return <label className="flex items-center justify-between border-b border-[var(--border)] py-3 text-sm last:border-0"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => setChecked(event.target.checked)} /></label>;
 }
-function PriceRow({ price, onSave, onToggle }: { key?: string; price: ServicePrice; onSave: (price: ServicePrice, amount: string, studentAmount: string) => void; onToggle: () => void }) {
+function PriceRow({ price, onSave, onToggle, onDelete }: { key?: string; price: ServicePrice; onSave: (price: ServicePrice, amount: string, studentAmount: string) => void; onToggle: () => void; onDelete: () => void }) {
   const [amount, setAmount] = useState(String(price.amount));
   const [studentAmount, setStudentAmount] = useState(price.studentAmount === undefined ? "" : String(price.studentAmount));
-  return <div className="flex flex-wrap items-end gap-3 border-b border-[var(--border)] pb-3 last:border-0"><div className="min-w-[190px] flex-1"><p className="text-sm font-medium">{price.name}</p><p className="text-xs text-[var(--text-muted)]">{price.category}</p></div><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Regular (₱)</span><input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Student (₱)</span><input type="number" min="0" step="0.01" value={studentAmount} onChange={(event) => setStudentAmount(event.target.value)} placeholder="Not set" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={() => onSave(price, amount, studentAmount)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">Save</button><button onClick={onToggle} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">{price.active ? "Deactivate" : "Activate"}</button></div>;
+  return <div className="flex flex-wrap items-end gap-3 border-b border-[var(--border)] pb-3 last:border-0"><div className="min-w-[190px] flex-1"><p className="text-sm font-medium">{price.name}</p><p className="text-xs text-[var(--text-muted)]">{price.category}</p></div><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Regular (₱)</span><input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><label className="w-32"><span className="mb-1 block text-xs text-[var(--text-muted)]">Student (₱)</span><input type="number" min="0" step="0.01" value={studentAmount} onChange={(event) => setStudentAmount(event.target.value)} placeholder="Not set" className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm" /></label><button onClick={() => onSave(price, amount, studentAmount)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">Save</button><button onClick={onToggle} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold">{price.active ? "Deactivate" : "Activate"}</button><button onClick={onDelete} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Delete</button></div>;
 }

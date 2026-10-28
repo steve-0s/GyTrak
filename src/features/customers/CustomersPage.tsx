@@ -46,7 +46,7 @@ const statusClasses: Record<Customer["status"], string> = {
 };
 
 export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0, openCustomerId }: Props) {
-  const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, archiveCustomer, reviewRegistration } = useGymData();
+  const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, archiveCustomer, deleteCustomer, reviewRegistration } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [customerFilterId, setCustomerFilterId] = useState("");
@@ -113,6 +113,12 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
           const error = archiveCustomer(selected.id);
           if (error) toast.error(error);
           else { setSelectedId(null); onAction("Customer archived"); }
+        }}
+        onDelete={() => {
+          if (!window.confirm(`Permanently delete ${selected.name}? This cannot be undone.`)) return;
+          const error = deleteCustomer(selected.id);
+          if (error) toast.error(error);
+          else { setSelectedId(null); onAction("Customer deleted"); }
         }}
         onChangeType={() => {
           const updated =
@@ -315,6 +321,12 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
                     >
                       View
                     </button>
+                    <button
+                      onClick={(event) => { event.stopPropagation(); if (!window.confirm(`Permanently delete ${customer.name}? This cannot be undone.`)) return; const error = deleteCustomer(customer.id); if (error) toast.error(error); else onAction("Customer deleted"); }}
+                      className="ml-3 font-semibold text-red-600"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -386,6 +398,7 @@ function CustomerDetails({
   onBack,
   onEdit,
   onArchive,
+  onDelete,
   onConvert,
   onChangeType,
   onAction,
@@ -396,6 +409,7 @@ function CustomerDetails({
   onBack: () => void;
   onEdit: () => void;
   onArchive: () => void;
+  onDelete: () => void;
   onConvert: () => void;
   onChangeType: () => void;
   onAction: (message: string) => void;
@@ -437,6 +451,12 @@ function CustomerDetails({
             className="rounded-lg border border-amber-300 px-3.5 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50"
           >
             Archive customer
+          </button>
+          <button
+            onClick={onDelete}
+            className="rounded-lg border border-red-200 px-3.5 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+          >
+            Delete customer
           </button>
           <button
             disabled={customer.type === "Walk-in" && !canConvert}

@@ -10,7 +10,7 @@ type Props = { isAdmin: boolean; branch?: string; onAction: (message: string) =>
 const emptyForm = { name: "", specialty: "", phone: "" };
 
 export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction }: Props) {
-  const { coaches, branches, upsertCoach, archiveCoach } = useGymData();
+  const { coaches, branches, upsertCoach, archiveCoach, deleteCoach } = useGymData();
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState(isAdmin ? "All branches" : assignedBranch);
   const [formOpen, setFormOpen] = useState(false);
@@ -81,6 +81,12 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
     onAction(`Coach ${coach.status === "Active" ? "deactivated" : "activated"}`);
   };
 
+  const remove = (coach: Coach) => {
+    if (!window.confirm(`Permanently delete ${coach.name}? This cannot be undone.`)) return;
+    const error = deleteCoach(coach.id);
+    onAction(error ?? "Coach deleted");
+  };
+
   return (
     <div>
       <div className="page-header page-header--actions">
@@ -130,7 +136,7 @@ export default function CoachesPage({ isAdmin, branch: assignedBranch = "Makati 
                 <td className="text-[var(--text-muted)]">{coach.branch}</td>
                 <td className="text-[var(--text-muted)]">{coach.phone}</td>
                 <td><button onClick={() => toggleStatus(coach)} className="font-medium text-[var(--accent)]">{coach.status}</button></td>
-                <td className="text-right"><OverlayDropdown label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]" menuClassName="min-w-32"><button role="menuitem" onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button role="menuitem" onClick={() => archive(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50">Archive</button></OverlayDropdown></td>
+                <td className="text-right"><OverlayDropdown label={`Actions for ${coach.name}`} className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--bg)]" menuClassName="min-w-32"><button role="menuitem" onClick={() => openEdit(coach)} className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]">Edit</button><button role="menuitem" onClick={() => archive(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50">Archive</button><button role="menuitem" onClick={() => remove(coach)} className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50">Delete</button></OverlayDropdown></td>
               </tr>)}
             </tbody>
           </table>
