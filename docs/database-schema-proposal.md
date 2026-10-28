@@ -473,8 +473,10 @@ Inspected:
 - `src/app/routes.tsx`
 - Relevant screens under `src/features/` for customers, memberships, walk-ins, attendance, scanner sync, coaches, RFID, QR registration, administration, dashboards, and reports
 
-Created:
+## Corrective migration baseline
 
-- `docs/database-schema-proposal.md`
+The PostgreSQL migration directory is `src/backend/migration`; the backend Makefile uses `./migration` when run from `src/backend`. The initial schema is followed by `000002_lifecycle_integrity`, an additive corrective migration.
 
-No application files were changed, so `npm run build` was not required for this phase. No backend, dependency, migration, or database connection was added.
+The corrective migration adds `customer_branch_history` with an idempotent initial backfill from `customers.branch_id`, a dedicated `walk_ins` table, archive metadata for customers/plans/coaches, attendance and RFID integrity checks, walk-in transaction/attendance safeguards, reminder customer-membership consistency, half-open pricing ranges, and operational indexes. Financial records, attendance records, RFID events, and audit logs remain retained records and are not exposed to generic archive/delete workflows.
+
+The down migration refuses to roll back when archived rows exist or when data would overlap under the old inclusive pricing convention; those cases require an explicit data migration first. The migration has not been applied in this audit. It must be tested against a disposable PostgreSQL database before production use, particularly where existing data may contain duplicate assignments, invalid branch relationships, or overlapping prices.

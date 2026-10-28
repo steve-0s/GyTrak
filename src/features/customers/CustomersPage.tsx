@@ -25,7 +25,7 @@ export type Customer = {
   phone: string;
   email: string;
   type: "Member" | "Walk-in";
-  status: "Active" | "Pending" | "Expired" | "None";
+  status: "Active" | "Pending" | "Expired" | "None" | "Archived";
   branch: string;
   registered: string;
   lastVisit: string;
@@ -42,10 +42,11 @@ const statusClasses: Record<Customer["status"], string> = {
   Pending: "bg-amber-50 text-amber-700",
   Expired: "bg-red-50 text-red-700",
   None: "bg-[var(--bg)] text-[var(--text-muted)]",
+  Archived: "bg-amber-50 text-amber-700",
 };
 
 export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makati Central", onAction, openCreateSignal = 0, openCustomerId }: Props) {
-  const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, reviewRegistration } = useGymData();
+  const { customers, registrations, visits, branches, upsertCustomer, updateCustomer, archiveCustomer, reviewRegistration } = useGymData();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [customerFilterId, setCustomerFilterId] = useState("");
@@ -65,7 +66,7 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
       scopedCustomers.filter(
         (customer) =>
           (type === "All types" || customer.type === type) &&
-          (status === "All statuses" || customer.status === status) &&
+          (status === "All statuses" ? customer.status !== "Archived" : customer.status === status) &&
           (!customerFilterId || customer.id === customerFilterId),
       ),
     [scopedCustomers, type, status, customerFilterId],
@@ -108,6 +109,11 @@ export default function CustomersPage({ isAdmin, branch: assignedBranch = "Makat
         canConvert={activeBranches.some((item) => item.name === selected.branch)}
         onBack={() => setSelectedId(null)}
         onEdit={() => setEditing(selected)}
+        onArchive={() => {
+          const error = archiveCustomer(selected.id);
+          if (error) toast.error(error);
+          else { setSelectedId(null); onAction("Customer archived"); }
+        }}
         onChangeType={() => {
           const updated =
             selected.type === "Member"
@@ -379,6 +385,7 @@ function CustomerDetails({
   canConvert,
   onBack,
   onEdit,
+  onArchive,
   onConvert,
   onChangeType,
   onAction,
@@ -388,6 +395,7 @@ function CustomerDetails({
   canConvert: boolean;
   onBack: () => void;
   onEdit: () => void;
+  onArchive: () => void;
   onConvert: () => void;
   onChangeType: () => void;
   onAction: (message: string) => void;
@@ -423,6 +431,12 @@ function CustomerDetails({
             className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3.5 py-2 text-sm font-medium hover:bg-[var(--bg)]"
           >
             <Edit3 size={15} /> Edit profile
+          </button>
+          <button
+            onClick={() => { if (window.confirm(`Archive ${customer.name}? Their historical records will be retained.`)) onArchive(); }}
+            className="rounded-lg border border-amber-300 px-3.5 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50"
+          >
+            Archive customer
           </button>
           <button
             disabled={customer.type === "Walk-in" && !canConvert}

@@ -1,7 +1,7 @@
 export type Role = "Admin" | "Front Desk"
 export type Theme = "light" | "dark"
 export type BranchStatus = "Active" | "Inactive" | "Archived"
-export type Branch = { id: string; name: string; location: string; status: BranchStatus }
+export type Branch = { id: string; name: string; location: string; status: BranchStatus; archivedAt?: string }
 export type BranchRecord = Branch & { customers: number; memberships: number; visits: number; revenue: number; frontDesk: number }
 export type Customer = {
   id: string
@@ -9,7 +9,7 @@ export type Customer = {
   phone: string
   email: string
   type: "Member" | "Walk-in"
-  status: "Active" | "Pending" | "Expired" | "None"
+  status: "Active" | "Pending" | "Expired" | "None" | "Archived"
   branch: string
   registered: string
   lastVisit: string
@@ -18,6 +18,8 @@ export type Customer = {
   keyfob?: string
   classification?: "Regular" | "Student"
   photo?: string
+  archivedAt?: string
+  archivedFromStatus?: "Active" | "Pending" | "Expired" | "None"
 }
 export type RegistrationStatus = "Pending" | "Needs correction" | "Approved" | "Rejected"
 export type RegistrationSubmission = {
@@ -47,7 +49,7 @@ export type WalkIn = {
   fee: number
   payment: "Paid" | "Pending"
   method: string
-  status: "Registered" | "Completed" | "Checked in"
+  status: "Registered" | "Completed" | "Checked in" | "Cancelled"
   serviceName?: string
   attendanceId?: string
   reason?: string
@@ -70,6 +72,7 @@ export type VisitRecord = {
 export type MembershipStatus = "Active" | "Pending" | "Expired" | "Suspended" | "Cancelled"
 export type PaymentStatus = "Paid" | "Pending" | "Partially paid"
 export type MembershipPlan = {
+  id?: string
   name: string
   duration: string
   durationMonths: number
@@ -80,6 +83,8 @@ export type MembershipPlan = {
   studentMonthlyDues?: number
   studentInitiationFee?: number
   active: boolean
+  archived?: boolean
+  archivedAt?: string
   used: number
   promoName?: string
   promoDiscountPercent?: number
@@ -168,7 +173,7 @@ export type Membership = {
   billingPauses?: MembershipBillingPause[]
   cancelledAt?: string
 }
-export type Coach = { id: string; name: string; specialty: string; branch: string; status: "Active" | "Inactive"; phone: string }
+export type Coach = { id: string; name: string; specialty: string; branch: string; status: "Active" | "Inactive" | "Archived"; phone: string; archivedAt?: string; archivedFromStatus?: "Active" | "Inactive" }
 export type Keyfob = { id: string; uid: string; customer: string; branch: string; status: "Assigned" | "Unassigned" | "Deactivated"; date: string }
 export type FrontDeskAccount = { id: string; name: string; email: string; branch: string; status: "Active" | "Inactive"; created: string; activity: string }
 export type AuditLog = { time: string; user: string; role: Role; branch: string; action: string; record: string; summary: string }
@@ -199,4 +204,12 @@ export type NotificationRecord = {
   branch?: string
   roles?: Role[]
   destination?: string
+}
+export type ArchivedRecord = {
+  id: string
+  entity: "Customer" | "Branch" | "Membership plan" | "Coach"
+  name: string
+  branch?: string
+  archivedAt: string
+  status: string
 }

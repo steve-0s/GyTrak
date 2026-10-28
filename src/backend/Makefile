@@ -13,7 +13,7 @@ DB_SSLMODE=disable
 DATABASE_URL ?= postgres://$(DB_USER)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
 
 # Migration directory
-MIGRATIONS_PATH=./db/migration
+MIGRATIONS_PATH=./migration
 
 .PHONY: help run build test clean tidy migrate-up migrate-down migrate-create sqlc createdb dropdb
 

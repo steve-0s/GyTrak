@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
+  Archive,
   Bell,
   Building2,
   CalendarCheck,
@@ -37,6 +38,7 @@ import ScannerSyncPage from "../roles/front-desk/screens/ScannerSyncScreen";
 import BranchesScreen from "../roles/admin/screens/BranchesScreen";
 import StaffScreen from "../roles/admin/screens/StaffScreen";
 import AuditLogsScreen from "../roles/admin/screens/AuditLogsScreen";
+import ArchivedRecordsScreen from "../shared/screens/ArchivedRecordsScreen";
 import ReportsPage from "../shared/screens/ReportsScreen";
 import QRRegistrationPage from "../shared/screens/QRRegistrationScreen";
 import QRSettingsPage from "../roles/admin/screens/QRSettingsScreen";
@@ -74,6 +76,7 @@ const icons = {
   ClipboardList,
   Settings,
   ScanLine,
+  Archive,
   Bell,
 };
 
@@ -279,6 +282,8 @@ function App() {
             <QRSettingsPage />
           ) : currentPage === "Audit Logs" ? (
             <AuditLogsScreen onAction={handleAction} />
+          ) : currentPage === "Archived Records" ? (
+            <ArchivedRecordsScreen isAdmin={isAdmin} branch={account?.branch} onAction={handleAction} />
           ) : currentPage === "Settings" ? (
             <SettingsPage onAction={handleAction} theme={theme} onThemeChange={changeTheme} account={account} onChangeEmail={changeEmail} onChangePassword={changePassword} />
           ) : currentPage === "Reports" || currentPage === "Branch Reports" ? (

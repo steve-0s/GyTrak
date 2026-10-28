@@ -47,7 +47,7 @@ type WalkIn = {
   fee: number;
   payment: "Paid" | "Pending";
   method: string;
-  status: "Registered" | "Completed" | "Checked in";
+  status: "Registered" | "Completed" | "Checked in" | "Cancelled";
   serviceName?: string;
 };
 type Membership = SharedMembership;
@@ -110,12 +110,15 @@ export default function WalkInsMembershipsPage({
     addWalkIn,
     removeWalkIn,
     updateWalkIn,
+    cancelWalkIn,
     createMembership,
     updateMembership,
     pauseMembershipBilling,
     resumeMembershipBilling,
     removeMembership,
     addMembershipPlan,
+    archiveMembershipPlan,
+    restoreMembershipPlan,
     recordWalkInPayment,
     recordMembershipPayment,
     recordManualAttendance,
@@ -352,6 +355,16 @@ export default function WalkInsMembershipsPage({
           addMembershipPlan(plan);
           onAction("Membership plan created");
         }}
+        onArchive={(name) => {
+          const error = archiveMembershipPlan(name);
+          if (error) toast.error(error);
+          else onAction("Membership plan archived");
+        }}
+        onRestore={(name) => {
+          const error = restoreMembershipPlan(name);
+          if (error) toast.error(error);
+          else onAction("Membership plan restored");
+        }}
       />
     );
   return (
@@ -455,10 +468,11 @@ export default function WalkInsMembershipsPage({
               : undefined
           }
           onSelect={setSelectedWalkIn}
-          onDelete={(row) => {
-            if (window.confirm(`Delete walk-in ${row.id}?`)) {
-              removeWalkIn(row.id);
-              onAction("Walk-in deleted");
+          onCancel={(row) => {
+            if (window.confirm(`Cancel walk-in ${row.id}? Its payment and attendance history will be retained.`)) {
+              const error = cancelWalkIn(row.id);
+              if (error) toast.error(error);
+              else onAction("Walk-in cancelled");
             }
           }}
         />
@@ -812,7 +826,7 @@ function WalkInList({
   branches,
   onBranchChange,
   onSelect,
-  onDelete,
+  onCancel,
 }: {
   customers: SharedCustomer[];
   customerFilterId: string;
@@ -827,7 +841,7 @@ function WalkInList({
   branches?: string[];
   onBranchChange?: (value: string) => void;
   onSelect: (row: WalkIn) => void;
-  onDelete: (row: WalkIn) => void;
+  onCancel: (row: WalkIn) => void;
 }) {
   const paid = allRows
     .filter((row) => row.payment === "Paid")
@@ -885,6 +899,7 @@ function WalkInList({
           "Registered",
           "Checked in",
           "Completed",
+          "Cancelled",
         ]}
       >
         <table className="data-table min-w-[850px]">
@@ -941,7 +956,7 @@ function WalkInList({
                 >
                   <RowActions
                     onDetails={() => onSelect(row)}
-                    onDelete={() => onDelete(row)}
+                    onDelete={() => onCancel(row)}
                   />
                 </td>
               </tr>
@@ -1149,7 +1164,7 @@ function RowActions({
           onClick={onDelete}
           className="block w-full rounded-md px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
         >
-          Delete
+          Cancel visit
         </button>
       </OverlayDropdown>
     </div>
@@ -2314,11 +2329,15 @@ function PlansPage({
   policy,
   onBack,
   onSave,
+  onArchive,
+  onRestore,
 }: {
   plans: Plan[];
   policy: MembershipPolicySettings;
   onBack: () => void;
   onSave: (plan: Plan) => void | Promise<void>;
+  onArchive: (name: string) => void;
+  onRestore: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [planStep, setPlanStep] = useState(0);
@@ -3119,7 +3138,7 @@ function PlansPage({
         </Modal>
       )}
       <div className="grid gap-4 md:grid-cols-3">
-        {plans.map((plan) => (
+        {plans.filter((plan) => !plan.archived).map((plan) => (
           <section
             key={plan.name}
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
@@ -3157,6 +3176,7 @@ function PlansPage({
             <div className="mt-5 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
               {plan.used} memberships use this plan
             </div>
+            <button onClick={() => { if (window.confirm(`Archive ${plan.name}? Existing memberships will retain their terms.`)) onArchive(plan.name); }} className="mt-4 rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">Archive plan</button>
           </section>
         ))}
       </div>
