@@ -54,6 +54,18 @@
   --toast-error-text: #FEE2E2;
 }
 
+.public-registration {
+  --bg: #F5F7F5;
+  --surface: #FFFFFF;
+  --border: #E7E5E4;
+  --text: #1C1917;
+  --text-muted: #78716C;
+  --accent: #047857;
+  --accent-hover: #065F46;
+  --accent-subtle: #ECFDF5;
+  --on-accent: #FFFFFF;
+}
+
 [data-role="Admin"] {
   --accent: #60A5FA;
   --accent-hover: #93C5FD;

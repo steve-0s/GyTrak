@@ -153,10 +153,15 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     const branch = branchFor(input.branchId, data.branches);
     if (!branch) throw new Error("This registration link is not associated with an active branch.");
     const phone = normalizePhone(input.phone);
-    const possibleCustomerIds = findCustomersByPhone(phone).map((customer) => customer.id);
-    const duplicate = possibleCustomerIds.length > 0 || data.registrations.some((item) =>
-      ["Pending", "Needs correction"].includes(item.status) && normalizePhone(item.phone) === phone,
-    );
+    const email = input.email.trim().toLowerCase();
+    const phoneMatches = findCustomersByPhone(phone);
+    const emailMatches = email ? data.customers.filter((customer) => customer.email.trim().toLowerCase() === email) : [];
+    const possibleCustomerIds = [...new Set([...phoneMatches, ...emailMatches].map((customer) => customer.id))];
+    const hasPendingMatch = data.registrations.some((item) => {
+      if (!["Pending", "Needs correction"].includes(item.status)) return false;
+      return normalizePhone(item.phone) === phone || (Boolean(email) && item.email.trim().toLowerCase() === email);
+    });
+    const duplicate = possibleCustomerIds.length > 0 || hasPendingMatch;
     const submission: RegistrationSubmission = {
       id: nextMockId("REG", 1000),
       reference: `GY-${Date.now().toString(36).toUpperCase()}`,
@@ -164,7 +169,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
       branch: branch.name,
       name: input.name.trim(),
       phone,
-      email: input.email.trim().toLowerCase(),
+      email,
       submittedAt: new Date().toISOString(),
       status: "Pending",
       possibleCustomerIds,
