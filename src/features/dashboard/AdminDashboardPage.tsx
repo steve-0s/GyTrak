@@ -92,7 +92,7 @@ export default function AdminDashboardPage({ onAction, onOpenMembership }: Props
     .reduce((sum, item) => sum + item.fee, 0);
   const revenueTotal = periodCollected + paidWalkInRevenue;
   const pendingRegistrations = registrations.filter((item) =>
-    branchNames.has(item.branch) && ["Pending", "Needs correction"].includes(item.status),
+    (!item.branch || branchNames.has(item.branch)) && ["Pending", "Needs correction"].includes(item.status),
   );
   const pendingSync = scopedVisits.filter((item) => item.sync === "Pending" || item.sync === "Failed");
 

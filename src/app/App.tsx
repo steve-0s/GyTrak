@@ -41,7 +41,6 @@ import AuditLogsScreen from "../roles/admin/screens/AuditLogsScreen";
 import ArchivedRecordsScreen from "../shared/screens/ArchivedRecordsScreen";
 import ReportsPage from "../shared/screens/ReportsScreen";
 import QRRegistrationPage from "../shared/screens/QRRegistrationScreen";
-import QRSettingsPage from "../roles/admin/screens/QRSettingsScreen";
 import SettingsPage from "../roles/admin/screens/SettingsScreen";
 import CoachesPage from "../roles/front-desk/screens/CoachesScreen";
 import MembershipRemindersPage from "../features/reminders/MembershipRemindersPage";
@@ -278,8 +277,6 @@ function App() {
             <BranchesScreen onAction={handleAction} />
           ) : currentPage === "Front Desk Accounts" ? (
             <StaffScreen onAction={handleAction} />
-          ) : currentPage === "QR Codes" ? (
-            <QRSettingsPage />
           ) : currentPage === "Audit Logs" ? (
             <AuditLogsScreen onAction={handleAction} />
           ) : currentPage === "Archived Records" ? (

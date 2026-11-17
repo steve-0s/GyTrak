@@ -91,7 +91,7 @@ export default function FrontDeskDashboardPage({
       ((item.outstandingBalance ?? 0) > 0 && item.status === "Pending");
   }).sort((a, b) => (dashboardDateKey(a.end) ?? a.end).localeCompare(dashboardDateKey(b.end) ?? b.end));
   const pendingRegistrations = registrations.filter((item) =>
-    item.branch === assignedBranch && ["Pending", "Needs correction"].includes(item.status),
+    (!item.branch || item.branch === assignedBranch) && ["Pending", "Needs correction"].includes(item.status),
   );
   const paymentTargetMembership = branchMemberships.find((item) =>
     (item.outstandingBalance ?? 0) > 0 || item.payment === "Pending",
@@ -199,10 +199,10 @@ export default function FrontDeskDashboardPage({
       </div>
 
       <section className="mt-5 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <SectionHeader title="Registration Review" subtitle={`${assignedBranch} QR submissions awaiting staff action`} action="Review in Customers" onAction={() => onAction("Customers opened")} />
+        <SectionHeader title="Registration Review" subtitle="Customer registration submissions awaiting staff action" action="Review in Customers" onAction={() => onAction("Customers opened")} />
         <div className="grid gap-3 p-4 sm:grid-cols-2">{pendingRegistrations.slice(0, 4).map((item) => <div key={item.id} className="rounded-lg border border-[var(--border)] p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold">{item.name}</p><span className="text-[11px] text-amber-500">{item.possibleCustomerIds.length ? "Possible duplicate" : item.status}</span></div><p className="mt-1 text-[11px] text-[var(--text-muted)]">{item.reference} · {new Date(item.submittedAt).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" })}</p><button onClick={() => onAction("Customers opened")} className="mt-3 text-xs font-semibold text-[var(--accent)]">Review submission</button></div>)}{pendingRegistrations.length === 0 && <EmptyState text="No profile registrations are waiting for review." />}</div>
       </section>
-      <p className="mt-5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]"><CheckCircle2 size={14} className="text-[var(--accent)]" />All displayed operational records are scoped to {assignedBranch}. Dashboard date boundaries use Asia/Manila.</p>
+      <p className="mt-5 flex items-center gap-2 text-[11px] text-[var(--text-muted)]"><CheckCircle2 size={14} className="text-[var(--accent)]" />Operational records are scoped to {assignedBranch}; unassigned profile registrations are shared with staff across branches. Dashboard date boundaries use Asia/Manila.</p>
     </div>
   );
 }

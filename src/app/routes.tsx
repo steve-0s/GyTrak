@@ -16,7 +16,6 @@ export const appRoutes: RouteMeta[] = [
   { label: "Branch Reports", path: "/branch-reports", roles: ["Front Desk"], branchScope: "assigned", group: "Reports", icon: "ChartNoAxesCombined" },
   { label: "Branches", path: "/branches", roles: ["Admin"], branchScope: "all", group: "Administration", icon: "Building2" },
   { label: "Front Desk Accounts", path: "/front-desk-accounts", roles: ["Admin"], branchScope: "all", group: "Administration", icon: "UserCog" },
-  { label: "QR Codes", path: "/qr-codes", roles: ["Admin"], branchScope: "all", group: "Administration", icon: "ScanLine" },
   { label: "Audit Logs", path: "/audit-logs", roles: ["Admin"], branchScope: "all", group: "Administration", icon: "ClipboardList" },
   { label: "Archived Records", path: "/archived-records", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Administration", icon: "Archive" },
   { label: "Settings", path: "/settings", roles: ["Admin", "Front Desk"], branchScope: "assigned", group: "Administration", icon: "Settings" },

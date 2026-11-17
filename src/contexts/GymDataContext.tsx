@@ -21,12 +21,12 @@ const defaultMembershipPolicySettings: MembershipPolicySettings = {
 };
 
 type GymData = { customers: Customer[]; registrations: RegistrationSubmission[]; walkIns: WalkIn[]; visits: VisitRecord[]; memberships: Membership[]; membershipPlans: MembershipPlan[]; membershipPolicySettings: MembershipPolicySettings; paymentMethods: PaymentMethod[]; servicePrices: ServicePrice[]; payments: PaymentRecord[]; coaches: Coach[]; keyfobs: Keyfob[]; branches: BranchRecord[]; frontDeskAccounts: FrontDeskAccount[]; auditLogs: AuditLog[]; reminderRecords: ReminderRecord[]; reminderSettings: ReminderSettings };
-type ProfileInput = { branchId: string; name: string; phone: string; email: string };
+type ProfileInput = { name: string; phone: string; email: string };
 type GymDataContextValue = GymData & {
   archivedRecords: ArchivedRecord[];
   branches: BranchRecord[];
   submitProfileRegistration: (input: ProfileInput) => { submission: RegistrationSubmission; duplicate: boolean };
-  reviewRegistration: (id: string, action: "approve" | "reject" | "correction", reviewer: string, customerId?: string, note?: string) => string | null;
+  reviewRegistration: (id: string, action: "approve" | "reject" | "correction", reviewer: string, customerId?: string, note?: string, reviewBranch?: string) => string | null;
   findCustomersByPhone: (phone: string) => Customer[];
   checkInWalkIn: (branchId: string, phone: string) => { kind: "checked-in"; customer: Customer; walkIn: WalkIn; visit: VisitRecord } | { kind: "duplicate"; customer: Customer } | { kind: "ambiguous"; customers: Customer[] } | { kind: "not-found" } | { kind: "not-configured" };
   recordWalkInPayment: (walkInId: string, method: string) => void;
@@ -150,8 +150,6 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     return data.customers.filter((customer) => normalizePhone(customer.phone) === normalized);
   };
   const submitProfileRegistration = (input: ProfileInput) => {
-    const branch = branchFor(input.branchId, data.branches);
-    if (!branch) throw new Error("This registration link is not associated with an active branch.");
     const phone = normalizePhone(input.phone);
     const email = input.email.trim().toLowerCase();
     const phoneMatches = findCustomersByPhone(phone);
@@ -165,8 +163,6 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     const submission: RegistrationSubmission = {
       id: nextMockId("REG", 1000),
       reference: `GY-${Date.now().toString(36).toUpperCase()}`,
-      branchId: branch.id,
-      branch: branch.name,
       name: input.name.trim(),
       phone,
       email,
@@ -177,7 +173,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     persist({ ...data, registrations: [submission, ...data.registrations] });
     return { submission, duplicate };
   };
-  const reviewRegistration = (id: string, action: "approve" | "reject" | "correction", reviewer: string, customerId?: string, note?: string) => {
+  const reviewRegistration = (id: string, action: "approve" | "reject" | "correction", reviewer: string, customerId?: string, note?: string, reviewBranch?: string) => {
     const submission = data.registrations.find((item) => item.id === id);
     if (!submission || !["Pending", "Needs correction"].includes(submission.status)) return "This registration has already been reviewed or does not exist.";
     if (action === "approve") {
@@ -188,7 +184,10 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
       let customers = data.customers;
       let resultingCustomerId = customer?.id;
       if (!customer) {
-        const created: Customer = { id: nextMockId("CUS", 10500), name: submission.name, phone: submission.phone, email: submission.email, type: "Walk-in", status: "None", branch: submission.branch, registered: nowLabel(), lastVisit: "—", classification: "Regular" };
+        const branchName = reviewBranch ?? submission.branch;
+        const branch = data.branches.find((item) => item.name === branchName && item.status === "Active");
+        if (!branch) return "Select an active branch before approving this registration.";
+        const created: Customer = { id: nextMockId("CUS", 10500), name: submission.name, phone: submission.phone, email: submission.email, type: "Walk-in", status: "None", branch: branch.name, registered: nowLabel(), lastVisit: "—", classification: "Regular" };
         customers = [created, ...customers];
         resultingCustomerId = created.id;
       }

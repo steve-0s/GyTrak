@@ -25,8 +25,8 @@ export type RegistrationStatus = "Pending" | "Needs correction" | "Approved" | "
 export type RegistrationSubmission = {
   id: string
   reference: string
-  branchId: string
-  branch: string
+  branchId?: string
+  branch?: string
   name: string
   phone: string
   email: string

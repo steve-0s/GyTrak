@@ -15,10 +15,10 @@ GyTrak is a multi-branch gym management system designed to simplify customer and
 
 ### QR Code Self-Registration
 
-- **QR Code Registration** — Allow new visitors to scan a branch-specific QR code and fill out their own registration information using a mobile-friendly page.
+- **QR Code Registration** — Allow new visitors to use the same QR code or website URL at any branch to submit their contact details using a mobile-friendly page.
 - **Returning Visitor Profiles** — Let returning visitors provide their contact details so staff can find and select an existing customer profile.
 - **Duplicate Review** — Compare normalized phone numbers and exact email matches, and require staff to review matches before creating a profile.
-- **Branch Identification** — Associate registration and visit records with the appropriate gym branch.
+- **Branch Identification** — Associate visits with the gym branch; staff assign a branch when approving a new customer profile.
 - **Profile Reuse** — Keep customer details, visit history, and membership records linked to one customer profile.
 - **Registration and Attendance Separation** — Registration alone never activates a membership or records physical attendance. Staff record attendance manually in the first release.
 
@@ -112,10 +112,10 @@ This scanner workflow is planned for a post-release phase. The first release rec
 
 ## QR Code Registration Workflow
 
-1. A visitor scans the QR code displayed at the gym branch.
-2. The visitor submits their contact details through the branch's mobile-friendly public registration page.
-3. Staff review possible profile matches before creating a profile. The public page does not reveal matching customers.
-4. Staff may select an existing profile or confirm that the visitor is a different person before creating a separate profile.
+1. A visitor opens the shared public registration website or scans the shared QR code.
+2. The visitor submits their contact details through the mobile-friendly public registration page; the submission is not tied to a branch.
+3. Staff at any branch review possible profile matches before creating a profile. The public page does not reveal matching customers.
+4. Staff may select an existing profile or confirm that the visitor is a different person before creating a separate profile. When creating a new profile, the reviewing staff member's branch is associated with it.
 5. Registration does not confirm attendance, take payment, or activate a membership. Staff record any visit manually.
 6. Returning visitors can provide the same contact details so staff can find and reuse their existing profile.
 
@@ -131,7 +131,7 @@ Membership reminder delivery is part of the first-release scope. Exact QR expira
 - A customer may hold multiple active keyfobs. A keyfob UID can have only one active assignment at a time; deactivated UIDs may be reassigned without erasing prior assignment history.
 - Manual attendance may contain multiple completed visits for the same customer on the same day. Each visit has its own time-in and time-out. Warn staff when a completed visit already exists, but allow another visit. Prevent overlapping or invalid sessions. Require a reason for manual corrections and voids, record the actor and time, and preserve the original attendance values in the audit history.
 - The first release is online-only and attendance is entered manually. RFID scanning and offline synchronization are post-release capabilities; scanner events are not required to operate v1.
-- Public QR registration collects a profile request only; it does not itself confirm physical attendance, take payment, or activate membership. Public submissions must have creation and expiration timestamps, and expired submissions must be rejected before processing.
+- Public QR registration collects an unassigned profile request only; it does not itself confirm physical attendance, take payment, or activate membership. Staff at any branch can review the request and associate a branch when approving a new profile. Public submissions must have creation and expiration timestamps, and expired submissions must be rejected before processing.
 - Use `Asia/Manila` as the business timezone. The business day runs midnight to midnight in that timezone for attendance and daily reports.
 
 ## Unresolved Business Decisions

@@ -21,8 +21,10 @@ function branchIdFromUrl() {
 
 export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profile" | "walk-in" }) {
   const { branches, servicePrices, submitProfileRegistration, checkInWalkIn, findCustomersByPhone } = useGymData();
-  const branchId = branchIdFromUrl();
+  const isProfile = mode === "profile";
+  const branchId = isProfile ? "" : branchIdFromUrl();
   const branch = branches.find((item) => item.id === branchId && item.status === "Active");
+  const branchName = branch?.name ?? "";
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -30,9 +32,8 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
   const [submitted, setSubmitted] = useState(false);
   const [reference, setReference] = useState("");
   const [loading, setLoading] = useState(false);
-  const isProfile = mode === "profile";
 
-  if (!branch) {
+  if (!isProfile && !branch) {
     return (
       <PublicShell>
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-700">
@@ -59,8 +60,8 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
         </h1>
         <p className="mt-3 text-sm leading-6 text-[var(--text-muted)]">
           {isProfile
-            ? `Your profile request for ${branch.name} is ready for staff review.`
-            : `Your visit at ${branch.name} has been recorded.`}
+            ? "Your profile request is ready for staff review."
+            : `Your visit at ${branchName} has been recorded.`}
         </p>
         {reference && (
           <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--bg)] p-4 text-left">
@@ -106,7 +107,7 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
     setLoading(true);
     try {
       if (isProfile) {
-        const result = submitProfileRegistration({ branchId, name, phone, email });
+        const result = submitProfileRegistration({ name, phone, email });
         setReference(result.submission.reference);
         setSubmitted(true);
         return;
@@ -123,7 +124,7 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
         return reportError("Multiple profiles match this number. Please ask the front desk to resolve your identity.");
       }
       if (result.kind === "duplicate") {
-        return reportError(`${result.customer.name} already has an open visit at ${branch.name}.`);
+        return reportError(`${result.customer.name} already has an open visit at ${branchName}.`);
       }
 
       setReference(result.walkIn.id);
@@ -163,10 +164,10 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
           <section className="relative overflow-hidden bg-emerald-950 px-6 py-8 text-white sm:px-9 sm:py-10">
             <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full border-[36px] border-white/5" />
             <div className="relative">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-emerald-50">
+              {branchName && <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-emerald-50">
                 <MapPin size={14} />
-                {branch.name}
-              </div>
+                {branchName}
+              </div>}
               <p className="mt-10 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
                 {isProfile ? "Welcome to the gym" : "Your visit starts here"}
               </p>
@@ -282,14 +283,14 @@ export default function QRRegistrationPage({ mode = "profile" }: { mode?: "profi
                 {!loading && <ArrowRight size={17} />}
               </button>
               <p className="mt-4 text-center text-xs leading-5 text-[var(--text-muted)]">
-                By continuing, you’re asking {branch.name} staff to review the details you submitted.
+                By continuing, you’re asking {isProfile ? "our team" : `${branchName} staff`} to review the details you submitted.
               </p>
             </form>
           </section>
         </div>
 
         <footer className="mt-5 flex flex-col items-center justify-between gap-2 text-xs text-[var(--text-muted)] sm:flex-row">
-          <span>GyTrak · {branch.name}</span>
+          <span>{branchName ? `GyTrak · ${branchName}` : "GyTrak"}</span>
           <span>Need help? Please speak with the front desk.</span>
         </footer>
       </div>
