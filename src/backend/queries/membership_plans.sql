@@ -6,6 +6,26 @@ RETURNING *;
 -- name: GetMembershipPlan :one
 SELECT * FROM membership_plans WHERE id = $1;
 
+-- name: UpdateMembershipPlan :one
+UPDATE membership_plans
+SET name = $2,
+    duration_value = $3,
+    duration_unit = $4,
+    includes_coaching = $5,
+    promotion_eligible = $6,
+    promotion_name = $7,
+    promotion_code = $8,
+    promotion_discount_percent = $9,
+    free_intro_months = $10,
+    billing_start_mode = $11,
+    custom_first_billing_date = $12,
+    status = $13,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+  AND status IN ('active', 'inactive')
+  AND $13 IN ('active', 'inactive')
+RETURNING *;
+
 -- name: ListMembershipPlans :many
 SELECT * FROM membership_plans
 WHERE ($1::text = '' OR status = $1)

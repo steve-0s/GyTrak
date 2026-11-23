@@ -85,6 +85,7 @@ export type MembershipPlan = {
   active: boolean
   archived?: boolean
   archivedAt?: string
+  archivedFromStatus?: "Active" | "Inactive"
   used: number
   promoName?: string
   promoDiscountPercent?: number
@@ -147,6 +148,7 @@ export type Membership = {
   customer: string
   customerId: string
   plan: string
+  planId?: string
   start: string
   end: string
   status: MembershipStatus

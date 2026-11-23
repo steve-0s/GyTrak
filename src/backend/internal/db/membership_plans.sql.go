@@ -362,3 +362,80 @@ func (q *Queries) RestoreMembershipPlan(ctx context.Context, arg RestoreMembersh
 	)
 	return i, err
 }
+
+const updateMembershipPlan = `-- name: UpdateMembershipPlan :one
+UPDATE membership_plans
+SET name = $2,
+    duration_value = $3,
+    duration_unit = $4,
+    includes_coaching = $5,
+    promotion_eligible = $6,
+    promotion_name = $7,
+    promotion_code = $8,
+    promotion_discount_percent = $9,
+    free_intro_months = $10,
+    billing_start_mode = $11,
+    custom_first_billing_date = $12,
+    status = $13,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+  AND status IN ('active', 'inactive')
+  AND $13 IN ('active', 'inactive')
+RETURNING id, name, duration_value, duration_unit, includes_coaching, promotion_eligible, promotion_name, promotion_code, promotion_discount_percent, free_intro_months, billing_start_mode, custom_first_billing_date, status, created_at, archived_at, archived_by, archive_reason, updated_at
+`
+
+type UpdateMembershipPlanParams struct {
+	ID                       pgtype.UUID    `json:"id"`
+	Name                     string         `json:"name"`
+	DurationValue            int32          `json:"duration_value"`
+	DurationUnit             string         `json:"duration_unit"`
+	IncludesCoaching         bool           `json:"includes_coaching"`
+	PromotionEligible        bool           `json:"promotion_eligible"`
+	PromotionName            *string        `json:"promotion_name"`
+	PromotionCode            *string        `json:"promotion_code"`
+	PromotionDiscountPercent pgtype.Numeric `json:"promotion_discount_percent"`
+	FreeIntroMonths          int32          `json:"free_intro_months"`
+	BillingStartMode         string         `json:"billing_start_mode"`
+	CustomFirstBillingDate   pgtype.Date    `json:"custom_first_billing_date"`
+	Status                   string         `json:"status"`
+}
+
+func (q *Queries) UpdateMembershipPlan(ctx context.Context, arg UpdateMembershipPlanParams) (MembershipPlan, error) {
+	row := q.db.QueryRow(ctx, updateMembershipPlan,
+		arg.ID,
+		arg.Name,
+		arg.DurationValue,
+		arg.DurationUnit,
+		arg.IncludesCoaching,
+		arg.PromotionEligible,
+		arg.PromotionName,
+		arg.PromotionCode,
+		arg.PromotionDiscountPercent,
+		arg.FreeIntroMonths,
+		arg.BillingStartMode,
+		arg.CustomFirstBillingDate,
+		arg.Status,
+	)
+	var i MembershipPlan
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.DurationValue,
+		&i.DurationUnit,
+		&i.IncludesCoaching,
+		&i.PromotionEligible,
+		&i.PromotionName,
+		&i.PromotionCode,
+		&i.PromotionDiscountPercent,
+		&i.FreeIntroMonths,
+		&i.BillingStartMode,
+		&i.CustomFirstBillingDate,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.ArchiveReason,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

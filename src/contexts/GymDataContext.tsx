@@ -47,7 +47,8 @@ type GymDataContextValue = GymData & {
   resumeMembershipBilling: (id: string, resumedAt: string, resumedBy: string) => string | null;
   removeMembership: (id: string) => void;
   deleteMembership: (id: string) => string | null;
-  addMembershipPlan: (plan: MembershipPlan) => void;
+  addMembershipPlan: (plan: MembershipPlan) => string | null;
+  updateMembershipPlan: (plan: MembershipPlan) => string | null;
   archiveMembershipPlan: (name: string) => string | null;
   restoreMembershipPlan: (name: string) => string | null;
   deleteMembershipPlan: (nameOrId: string) => string | null;
@@ -77,13 +78,14 @@ type GymDataContextValue = GymData & {
 };
 
 function seedData(): GymData {
+  const membershipPlans = ensureMembershipPlanIds(seedPlans as MembershipPlan[]);
   return {
     customers: seedCustomers.map((item) => ({ ...item })),
     registrations: [],
     walkIns: seedWalkIns.map((item) => ({ ...item })),
     visits: seedVisits.map((item) => ({ ...item })),
-    memberships: seedMemberships.map((item) => ({ ...item })),
-    membershipPlans: seedPlans.map((item) => ({ ...item, durationMonths: item.durationMonths ?? 1, monthlyDues: item.monthlyDues ?? item.price, initiationFee: item.initiationFee ?? 0, freeIntroMonths: item.freeIntroMonths ?? 0 } as MembershipPlan)),
+    memberships: attachMembershipPlanIds(seedMemberships.map((item) => ({ ...item })), membershipPlans),
+    membershipPlans: membershipPlans.map((item) => ({ ...item, durationMonths: item.durationMonths ?? 1, monthlyDues: item.monthlyDues ?? item.price, initiationFee: item.initiationFee ?? 0, freeIntroMonths: item.freeIntroMonths ?? 0 })),
     membershipPolicySettings: { ...defaultMembershipPolicySettings },
     paymentMethods: defaultPaymentMethods.map((item) => ({ ...item })),
     servicePrices: defaultServicePrices(),
@@ -98,6 +100,25 @@ function seedData(): GymData {
   };
 }
 
+function ensureMembershipPlanIds(plans: MembershipPlan[]) {
+  return plans.map((plan) => ({
+    ...plan,
+    id: plan.id ?? `PLAN-${encodeURIComponent(plan.name.trim().toLowerCase())}`,
+  }));
+}
+
+function attachMembershipPlanIds(memberships: Membership[], plans: MembershipPlan[]) {
+  const planIdsByName = new Map(
+    plans.map((plan) => [plan.name.trim().toLowerCase(), plan.id]),
+  );
+  return memberships.map((membership) => ({
+    ...membership,
+    planId:
+      membership.planId ??
+      planIdsByName.get(membership.plan.trim().toLowerCase()),
+  }));
+}
+
 function mergeSeedRecords<T>(seed: T[], stored: T[], key: (record: T) => string) {
   const existing = new Set(stored.map(key));
   return [...stored, ...seed.filter((record) => !existing.has(key(record)))];
@@ -106,26 +127,37 @@ function mergeSeedRecords<T>(seed: T[], stored: T[], key: (record: T) => string)
 function readData(): GymData {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) ?? "null") as GymData | null;
-    if (stored?.customers && stored.registrations && stored.walkIns && stored.visits) return {
-      ...seedData(),
-      ...stored,
-      customers: mergeSeedRecords(seedCustomers as Customer[], stored.customers, (item) => item.id),
-      walkIns: mergeSeedRecords(seedWalkIns as WalkIn[], stored.walkIns, (item) => item.id),
-      visits: mergeSeedRecords(seedVisits as VisitRecord[], stored.visits, (item) => item.id),
-      memberships: mergeSeedRecords(seedMemberships, stored.memberships ?? [], (item) => item.id),
-      membershipPlans: mergeSeedRecords(seedPlans as MembershipPlan[], stored.membershipPlans ?? [], (item) => item.name),
-      membershipPolicySettings: { ...defaultMembershipPolicySettings, ...(stored.membershipPolicySettings ?? {}) },
-      paymentMethods: mergeSeedRecords(defaultPaymentMethods, stored.paymentMethods ?? [], (item) => item.id),
-      servicePrices: stored.servicePrices ?? defaultServicePrices(),
-      payments: mergeSeedRecords(seedPayments, stored.payments ?? [], (item) => item.id),
-      coaches: mergeSeedRecords(seedCoaches, stored.coaches ?? [], (item) => item.id),
-      keyfobs: mergeSeedRecords(seedKeyfobs, stored.keyfobs ?? [], (item) => item.id),
-      branches: mergeSeedRecords(branchRecords, stored.branches ?? [], (item) => item.id),
-      frontDeskAccounts: mergeSeedRecords(seedData().frontDeskAccounts, stored.frontDeskAccounts ?? [], (item) => item.id),
-      auditLogs: mergeSeedRecords(seedAuditLogs, stored.auditLogs ?? [], (item) => `${item.time}-${item.record}`),
-      reminderRecords: mergeSeedRecords(seedReminderRecords, stored.reminderRecords ?? [], (item) => item.id),
-      reminderSettings: { ...defaultReminderSettings, ...(stored.reminderSettings ?? {}), channels: { ...defaultReminderSettings.channels, ...(stored.reminderSettings?.channels ?? {}) } },
-    };
+    if (stored?.customers && stored.registrations && stored.walkIns && stored.visits) {
+      const membershipPlans = mergeSeedRecords(
+        ensureMembershipPlanIds(seedPlans as MembershipPlan[]),
+        ensureMembershipPlanIds(stored.membershipPlans ?? []),
+        (item) => item.id,
+      );
+      const memberships = attachMembershipPlanIds(
+        mergeSeedRecords(seedMemberships, stored.memberships ?? [], (item) => item.id),
+        membershipPlans,
+      );
+      return {
+        ...seedData(),
+        ...stored,
+        customers: mergeSeedRecords(seedCustomers as Customer[], stored.customers, (item) => item.id),
+        walkIns: mergeSeedRecords(seedWalkIns as WalkIn[], stored.walkIns, (item) => item.id),
+        visits: mergeSeedRecords(seedVisits as VisitRecord[], stored.visits, (item) => item.id),
+        memberships,
+        membershipPlans,
+        membershipPolicySettings: { ...defaultMembershipPolicySettings, ...(stored.membershipPolicySettings ?? {}) },
+        paymentMethods: mergeSeedRecords(defaultPaymentMethods, stored.paymentMethods ?? [], (item) => item.id),
+        servicePrices: stored.servicePrices ?? defaultServicePrices(),
+        payments: mergeSeedRecords(seedPayments, stored.payments ?? [], (item) => item.id),
+        coaches: mergeSeedRecords(seedCoaches, stored.coaches ?? [], (item) => item.id),
+        keyfobs: mergeSeedRecords(seedKeyfobs, stored.keyfobs ?? [], (item) => item.id),
+        branches: mergeSeedRecords(branchRecords, stored.branches ?? [], (item) => item.id),
+        frontDeskAccounts: mergeSeedRecords(seedData().frontDeskAccounts, stored.frontDeskAccounts ?? [], (item) => item.id),
+        auditLogs: mergeSeedRecords(seedAuditLogs, stored.auditLogs ?? [], (item) => `${item.time}-${item.record}`),
+        reminderRecords: mergeSeedRecords(seedReminderRecords, stored.reminderRecords ?? [], (item) => item.id),
+        reminderSettings: { ...defaultReminderSettings, ...(stored.reminderSettings ?? {}), channels: { ...defaultReminderSettings.channels, ...(stored.reminderSettings?.channels ?? {}) } },
+      };
+    }
   } catch { /* use seed data */ }
   return seedData();
 }
@@ -362,23 +394,36 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     persist({ ...data, memberships: data.memberships.filter((item) => item.id !== id) });
     return null;
   };
-  const addMembershipPlan = (plan: MembershipPlan) => persist({ ...data, membershipPlans: data.membershipPlans.some((item) => item.name === plan.name) ? data.membershipPlans.map((item) => item.name === plan.name ? plan : item) : [...data.membershipPlans, plan] });
+  const addMembershipPlan = (plan: MembershipPlan) => {
+    if (data.membershipPlans.some((item) => item.name.trim().toLowerCase() === plan.name.trim().toLowerCase())) return "A membership plan with this name already exists.";
+    const newPlan = { ...plan, id: plan.id ?? nextMockId("PLAN", 3) };
+    persist({ ...data, membershipPlans: [...data.membershipPlans, newPlan] });
+    return null;
+  };
+  const updateMembershipPlan = (plan: MembershipPlan) => {
+    if (!plan.id) return "Membership plan was not found.";
+    if (plan.archived) return "Archived membership plans cannot be edited.";
+    if (data.membershipPlans.some((item) => item.id !== plan.id && item.name.trim().toLowerCase() === plan.name.trim().toLowerCase())) return "A membership plan with this name already exists.";
+    if (!data.membershipPlans.some((item) => item.id === plan.id)) return "Membership plan was not found.";
+    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.id === plan.id ? plan : item) });
+    return null;
+  };
   const archiveMembershipPlan = (name: string) => {
-    const plan = data.membershipPlans.find((item) => item.name === name);
+    const plan = data.membershipPlans.find((item) => item.id === name || item.name === name);
     if (!plan) return "Membership plan was not found.";
-    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.name === name ? { ...item, active: false, archived: true, archivedAt: nowLabel() } : item) });
+    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.id === plan.id ? { ...item, archivedFromStatus: item.active ? "Active" : "Inactive", active: false, archived: true, archivedAt: nowLabel() } : item) });
     return null;
   };
   const restoreMembershipPlan = (name: string) => {
     const plan = data.membershipPlans.find((item) => item.name === name || item.id === name);
     if (!plan || !plan.archived) return "Archived membership plan was not found.";
-    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.name === name || item.id === name ? { ...item, active: true, archived: false, archivedAt: undefined } : item) });
+    persist({ ...data, membershipPlans: data.membershipPlans.map((item) => item.name === name || item.id === name ? { ...item, active: item.archivedFromStatus !== "Inactive", archived: false, archivedAt: undefined, archivedFromStatus: undefined } : item) });
     return null;
   };
   const deleteMembershipPlan = (nameOrId: string) => {
     const plan = data.membershipPlans.find((item) => item.name === nameOrId || item.id === nameOrId);
     if (!plan) return "Membership plan was not found.";
-    if (data.memberships.some((item) => item.plan === plan.name)) return "This plan is used by membership history. Archive it instead.";
+    if (data.memberships.some((item) => item.planId === plan.id || (!item.planId && item.plan === plan.name))) return "This plan is used by membership history. Archive it instead.";
     persist({ ...data, membershipPlans: data.membershipPlans.filter((item) => item.name !== plan.name && item.id !== plan.id) });
     return null;
   };
@@ -561,7 +606,7 @@ export function GymDataProvider({ children }: { children: ReactNode }) {
     ...data.membershipPlans.filter((item) => item.archived).map((item) => ({ id: item.id ?? item.name, entity: "Membership plan" as const, name: item.name, archivedAt: item.archivedAt ?? "Unknown", status: "Archived" })),
     ...data.coaches.filter((item) => item.status === "Archived").map((item) => ({ id: item.id, entity: "Coach" as const, name: item.name, branch: item.branch, archivedAt: item.archivedAt ?? "Unknown", status: item.status })),
   ];
-  const value = useMemo(() => ({ ...data, archivedRecords, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, archiveCustomer, restoreCustomer, deleteCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, cancelWalkIn, createMembership, updateMembership, pauseMembershipBilling, resumeMembershipBilling, removeMembership, deleteMembership, addMembershipPlan, archiveMembershipPlan, restoreMembershipPlan, deleteMembershipPlan, updateMembershipPolicySettings, upsertPaymentMethod, deletePaymentMethod, upsertServicePrice, deleteServicePrice, recordMembershipPayment, upsertCoach, removeCoach, deleteCoach, archiveCoach, restoreCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, deleteFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data, archivedRecords]);
+  const value = useMemo(() => ({ ...data, archivedRecords, submitProfileRegistration, reviewRegistration, findCustomersByPhone, checkInWalkIn, recordWalkInPayment, upsertCustomer, updateCustomer, archiveCustomer, restoreCustomer, deleteCustomer, updateVisit, recordManualAttendance, updateWalkIn, addWalkIn, removeWalkIn, cancelWalkIn, createMembership, updateMembership, pauseMembershipBilling, resumeMembershipBilling, removeMembership, deleteMembership, addMembershipPlan, updateMembershipPlan, archiveMembershipPlan, restoreMembershipPlan, deleteMembershipPlan, updateMembershipPolicySettings, upsertPaymentMethod, deletePaymentMethod, upsertServicePrice, deleteServicePrice, recordMembershipPayment, upsertCoach, removeCoach, deleteCoach, archiveCoach, restoreCoach, assignKeyfob, deactivateKeyfob, upsertBranch, getBranchDeleteBlockers, deleteBranch, upsertFrontDeskAccount, toggleFrontDeskAccount, deleteFrontDeskAccount, addAuditLog, addReminder, updateReminderSettings, resetDemoData }), [data, archivedRecords]);
   return <GymDataContext.Provider value={value}>{children}</GymDataContext.Provider>;
 }
 

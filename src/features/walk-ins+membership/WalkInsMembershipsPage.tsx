@@ -118,6 +118,7 @@ export default function WalkInsMembershipsPage({
     removeMembership,
     deleteMembership,
     addMembershipPlan,
+    updateMembershipPlan,
     archiveMembershipPlan,
     restoreMembershipPlan,
     deleteMembershipPlan,
@@ -358,22 +359,24 @@ export default function WalkInsMembershipsPage({
         policy={membershipPolicySettings}
         onBack={() => setView("memberships")}
         onSave={(plan) => {
-          addMembershipPlan(plan);
+          const error = addMembershipPlan(plan);
+          if (error) throw new Error(error);
           onAction("Membership plan created");
         }}
-        onArchive={(name) => {
-          const error = archiveMembershipPlan(name);
+        onUpdate={(plan) => {
+          const error = updateMembershipPlan(plan);
+          if (error) throw new Error(error);
+          onAction("Membership plan updated");
+        }}
+        onArchive={(id, name) => {
+          if (!window.confirm(`Archive ${name}? Existing memberships will retain their terms.`)) return;
+          const error = archiveMembershipPlan(id);
           if (error) toast.error(error);
           else onAction("Membership plan archived");
         }}
-        onRestore={(name) => {
-          const error = restoreMembershipPlan(name);
-          if (error) toast.error(error);
-          else onAction("Membership plan restored");
-        }}
-        onDelete={(name) => {
+        onDelete={(id, name) => {
           if (!window.confirm(`Permanently delete membership plan ${name}? This cannot be undone.`)) return;
-          const error = deleteMembershipPlan(name);
+          const error = deleteMembershipPlan(id);
           if (error) toast.error(error);
           else onAction("Membership plan deleted");
         }}
@@ -1841,6 +1844,7 @@ function MembershipForm({
               customer: matchedCustomer.name,
               customerId: matchedCustomer.id,
               plan: selected.name,
+              planId: selected.id,
               start: dateFromToday,
               end: addBillingMonths(dateFromToday, durationMonths),
               status: "Active",
@@ -2370,19 +2374,20 @@ function PlansPage({
   policy,
   onBack,
   onSave,
+  onUpdate,
   onArchive,
-  onRestore,
   onDelete,
 }: {
   plans: Plan[];
   policy: MembershipPolicySettings;
   onBack: () => void;
   onSave: (plan: Plan) => void | Promise<void>;
-  onArchive: (name: string) => void;
-  onRestore: (name: string) => void;
-  onDelete: (name: string) => void;
+  onUpdate: (plan: Plan) => void | Promise<void>;
+  onArchive: (id: string, name: string) => void;
+  onDelete: (id: string, name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [planStep, setPlanStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
@@ -2397,6 +2402,7 @@ function PlansPage({
     "immediate" | "after_intro" | "custom_date"
   >("after_intro");
   const [customFirstBillingDate, setCustomFirstBillingDate] = useState("");
+  const [planActive, setPlanActive] = useState(true);
   const [formError, setFormError] = useState("");
   const monthlyAmount = Number(monthlyDues);
   const initiationAmount = Number(initiationFee);
@@ -2407,6 +2413,7 @@ function PlansPage({
   const closeAddForm = () => {
     if (savingRef.current) return;
     setAdding(false);
+    setEditingPlan(null);
     setPlanStep(0);
     setFormError("");
     setName("");
@@ -2418,6 +2425,24 @@ function PlansPage({
     setFreeIntroMonths("0");
     setBillingStartMode("after_intro");
     setCustomFirstBillingDate("");
+    setPlanActive(true);
+  };
+
+  const openEditForm = (plan: Plan) => {
+    setEditingPlan(plan);
+    setPlanStep(0);
+    setName(plan.name);
+    setDuration(plan.duration);
+    setMonthlyDues(String(plan.monthlyDues ?? plan.price));
+    setInitiationFee(String(plan.initiationFee ?? 0));
+    setPromoDiscountPercent(String(plan.promoDiscountPercent ?? 0));
+    setPromoName(plan.promoName ?? "");
+    setFreeIntroMonths(String(plan.freeIntroMonths ?? 0));
+    setBillingStartMode(plan.billingStartMode ?? "after_intro");
+    setCustomFirstBillingDate(plan.customFirstBillingDate ?? "");
+    setPlanActive(plan.active);
+    setFormError("");
+    setAdding(true);
   };
 
   const showFormError = (message: string) => {
@@ -2434,6 +2459,7 @@ function PlansPage({
       if (
         plans.some(
           (plan) =>
+            plan.id !== editingPlan?.id &&
             plan.name.trim().toLowerCase() === name.trim().toLowerCase(),
         )
       ) {
@@ -2517,14 +2543,16 @@ function PlansPage({
     if (![0, 1, 2].every(validatePlanStep)) return;
 
     const plan: Plan = {
+      ...(editingPlan ?? {}),
+      id: editingPlan?.id ?? nextMockId("PLAN", 3),
       name: name.trim(),
       duration,
       durationMonths: durationToMonths(duration),
       price: monthlyAmount,
       monthlyDues: monthlyAmount,
       initiationFee: initiationAmount,
-      active: true,
-      used: 0,
+      active: editingPlan ? planActive : true,
+      used: editingPlan?.used ?? 0,
       promoName: promoName.trim() || undefined,
       promoDiscountPercent: promoPercent,
       freeIntroMonths: freeMonths,
@@ -2537,7 +2565,8 @@ function PlansPage({
     setIsSaving(true);
     setFormError("");
     try {
-      await onSave(plan);
+      if (editingPlan) await onUpdate(plan);
+      else await onSave(plan);
       savingRef.current = false;
       setIsSaving(false);
       closeAddForm();
@@ -2547,7 +2576,7 @@ function PlansPage({
       const message =
         error instanceof Error
           ? error.message
-          : "The membership plan could not be created. Please try again.";
+          : `The membership plan could not be ${editingPlan ? "updated" : "created"}. Please try again.`;
       setFormError(message);
       toast.error(message);
     }
@@ -2579,20 +2608,27 @@ function PlansPage({
         </button>
       </div>
       {adding && (
-        <Modal label="Add membership plan" onClose={closeAddForm} wide>
+        <Modal
+          label={editingPlan ? "Edit membership plan" : "Add membership plan"}
+          onClose={closeAddForm}
+          wide
+        >
           <div className="mb-5 pr-8">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">
               Membership plans
             </p>
-            <h2 className="mt-1 text-xl font-bold">Create a plan</h2>
+            <h2 className="mt-1 text-xl font-bold">
+              {editingPlan ? "Edit plan" : "Create a plan"}
+            </h2>
             <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Configure the plan in four steps, then review the details before
-              creating it.
+              {editingPlan
+                ? "Update the plan details, pricing, benefits, or status."
+                : "Configure the plan in four steps, then review the details before creating it."}
             </p>
           </div>
 
           <ol
-            aria-label="Plan creation progress"
+            aria-label="Plan form progress"
             className="mb-6 grid grid-cols-4"
           >
             {[
@@ -2669,6 +2705,31 @@ function PlansPage({
                       member.
                     </span>
                   </label>
+                  {editingPlan && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium">
+                        Plan status
+                      </span>
+                      <select
+                        value={planActive ? "active" : "inactive"}
+                        onChange={(event) =>
+                          setPlanActive(event.target.value === "active")
+                        }
+                        aria-describedby="plan-status-help"
+                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                      <span
+                        id="plan-status-help"
+                        className="mt-1 block text-xs text-[var(--text-muted)]"
+                      >
+                        Inactive plans cannot be selected for new memberships.
+                        Existing memberships are not changed.
+                      </span>
+                    </label>
+                  )}
                 </div>
               </section>
             )}
@@ -3054,6 +3115,12 @@ function PlansPage({
                       label="Plan name"
                       value={name.trim() || "Not entered"}
                     />
+                    {editingPlan && (
+                      <ReviewValue
+                        label="Status"
+                        value={planActive ? "Active" : "Inactive"}
+                      />
+                    )}
                   </ReviewSection>
                   <ReviewSection
                     title="Pricing and duration"
@@ -3173,7 +3240,13 @@ function PlansPage({
                       aria-hidden="true"
                     />
                   )}
-                  {isSaving ? "Creating plan…" : "Create Plan"}
+                  {isSaving
+                    ? editingPlan
+                      ? "Saving changes…"
+                      : "Creating plan…"
+                    : editingPlan
+                      ? "Save changes"
+                      : "Create Plan"}
                 </button>
               )}
             </div>
@@ -3183,13 +3256,13 @@ function PlansPage({
       <div className="grid gap-4 md:grid-cols-3">
         {plans.filter((plan) => !plan.archived).map((plan) => (
           <section
-            key={plan.name}
+            key={plan.id ?? plan.name}
             className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
           >
             <div className="flex items-start justify-between">
               <h3 className="font-semibold">{plan.name}</h3>
               <span
-                className={`rounded-full px-2 py-1 text-[11px] ${plan.active ? badge("Active") : badge("Expired")}`}
+                className={`rounded-full px-2 py-1 text-[11px] ${plan.active ? badge("Active") : badge("Inactive")}`}
               >
                 {plan.active ? "Active" : "Inactive"}
               </span>
@@ -3219,7 +3292,38 @@ function PlansPage({
             <div className="mt-5 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
               {plan.used} memberships use this plan
             </div>
-            <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { if (window.confirm(`Archive ${plan.name}? Existing memberships will retain their terms.`)) onArchive(plan.name); }} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50">Archive plan</button><button onClick={() => onDelete(plan.name)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button></div>
+            <div className="mt-4 flex justify-end border-t border-[var(--border)] pt-3">
+              <OverlayDropdown
+                label={`More options for ${plan.name}`}
+                className="rounded p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg)]"
+                menuClassName="min-w-40"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openEditForm(plan)}
+                  className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-[var(--bg)]"
+                >
+                  Edit plan
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => onArchive(plan.id ?? plan.name, plan.name)}
+                  className="block w-full rounded px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50"
+                >
+                  Archive plan
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => onDelete(plan.id ?? plan.name, plan.name)}
+                  className="block w-full rounded px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </OverlayDropdown>
+            </div>
           </section>
         ))}
       </div>
